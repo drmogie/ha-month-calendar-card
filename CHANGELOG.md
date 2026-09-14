@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.09.14.8
+
+- Removed the divider line between individual event rows when
+  `agenda_grouping` is `day` — events in the same day group now sit
+  flush against each other, with only the day headers providing visual
+  separation. No change to the `event` grouping layout.
+
 ## 2026.09.14.7
 
 - Added `agenda_day_header_align` (agenda view only, used when

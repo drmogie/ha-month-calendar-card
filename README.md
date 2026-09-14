@@ -235,7 +235,8 @@ calendars:
   time sits at the right edge of that same line, with location on line 3
   and description on line 4 (each still only shown when its own toggle
   is on and the data exists). The day header's own text can be aligned
-  left, center, or right.
+  left, center, or right. Events within the same day no longer show a
+  divider line between them — only the day headers separate groups.
 - **Agenda row content is independently configurable.** Each event row
   can show or hide its calendar name, time, location, and description
   lines separately (`agenda_show_*` options) — a line is only shown when

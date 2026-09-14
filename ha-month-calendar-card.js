@@ -708,7 +708,8 @@ class HaMonthCalendarCard extends HTMLElement {
       ? `<div class="weekday-row">&nbsp;</div>`
       : "";
 
-    return `${spacerHtml}<div class="agenda-list">${listHtml}</div>`;
+    const listClass = cfg.agenda_grouping === "day" ? "agenda-list grouped-by-day" : "agenda-list";
+    return `${spacerHtml}<div class="${listClass}">${listHtml}</div>`;
   }
 
   _render() {
@@ -931,6 +932,9 @@ class HaMonthCalendarCard extends HTMLElement {
         border-radius: 4px;
       }
       .agenda-item:last-child {
+        border-bottom: none;
+      }
+      .agenda-list.grouped-by-day .agenda-item {
         border-bottom: none;
       }
       .agenda-item.no-click {
