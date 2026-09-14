@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.09.14.7
+
+- Added `agenda_day_header_align` (agenda view only, used when
+  `agenda_grouping` is `day`): `left` (default), `center`, or `right` —
+  aligns the day header's text. Editor: a matching "Day header
+  alignment" dropdown appears next to "Group by" whenever "Day" is
+  selected.
+
 ## 2026.09.14.6
 
 - Refined the "group by day" agenda layout: calendar name now sits at

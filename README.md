@@ -89,8 +89,10 @@ get a form where you can:
     collapsing to "+N more".
   - **Agenda / upcoming list**: how many days ahead to show, a color
     picker for today's highlight background, a "Group by" choice
-    (Event or Day), and four checkboxes to show/hide the calendar name,
-    time, location, and description on each event row.
+    (Event or Day, with a Left/Center/Right day-header alignment choice
+    appearing next to it when Day is picked), and four checkboxes to
+    show/hide the calendar name, time, location, and description on
+    each event row.
 - Add/remove calendars. Each calendar starts as a collapsed row showing
   just its icon, color, and name — click the chevron to expand it and
   edit the entity, display name, icon, and color. A newly-added calendar
@@ -122,6 +124,8 @@ max_events_per_day: 3           # month view only, default 3
 agenda_days: 14                 # agenda view only, default 14
 agenda_today_color: '#ffca28'   # agenda view only, default '#ffca28'
 agenda_grouping: event          # agenda view only: event | day, default "event"
+agenda_day_header_align: left   # agenda view only, used when agenda_grouping is "day":
+                                 # left | center | right, default "left"
 agenda_show_calendar: true      # agenda view only, default true
 agenda_show_time: true          # agenda view only, default true
 agenda_show_location: true      # agenda view only, default true
@@ -165,6 +169,7 @@ calendars:
 | `agenda_days`          | no       | `14`             | **Agenda view only.** How many days ahead (including today) to fetch and list events for. |
 | `agenda_today_color`   | no       | `#ffca28`        | **Agenda view only.** Background highlight color for events happening today; text color is chosen automatically for readability. |
 | `agenda_grouping`      | no       | `event`          | **Agenda view only.** `event` shows one row per event with its own relative day label. `day` groups events under a day header (Today / Tomorrow / Weekday, Mon D) shown once, and changes each row's layout: calendar name at the left edge of line 2, time at the right edge of that same line, location on line 3, description on line 4. |
+| `agenda_day_header_align` | no    | `left`           | **Agenda view only, used when `agenda_grouping` is `day`.** `left`, `center`, or `right` — horizontal alignment of the day header's text. |
 | `agenda_show_calendar` | no       | `true`           | **Agenda view only.** Show each event's calendar display name as a line under the title. |
 | `agenda_show_time`     | no       | `true`           | **Agenda view only.** Show the time range (or "All day") under the title. |
 | `agenda_show_location` | no       | `true`           | **Agenda view only.** Show the event's location, when the calendar provides one. |
@@ -229,7 +234,8 @@ calendars:
   day header: the calendar name sits at the left edge of line 2 and the
   time sits at the right edge of that same line, with location on line 3
   and description on line 4 (each still only shown when its own toggle
-  is on and the data exists).
+  is on and the data exists). The day header's own text can be aligned
+  left, center, or right.
 - **Agenda row content is independently configurable.** Each event row
   can show or hide its calendar name, time, location, and description
   lines separately (`agenda_show_*` options) — a line is only shown when

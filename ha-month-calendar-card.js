@@ -67,6 +67,8 @@
  *                                  # "day" groups events under a day header (Today,
  *                                  # Tomorrow, Weekday, Mon D) instead of repeating a
  *                                  # relative label on every row
+ * agenda_day_header_align: left   # agenda view only, used when agenda_grouping is
+ *                                  # "day": left | center | right, defaults to "left"
  * calendars:
  *   - entity: calendar.personal
  *     name: Personal
@@ -214,6 +216,10 @@ function normalizeConfig(config) {
     show_legend: config.show_legend !== false,
     agenda_align_spacer: config.agenda_align_spacer === true,
     agenda_grouping: config.agenda_grouping === "day" ? "day" : "event",
+    agenda_day_header_align:
+      config.agenda_day_header_align === "center" || config.agenda_day_header_align === "right"
+        ? config.agenda_day_header_align
+        : "left",
     event_display: config.event_display === "icon" ? "icon" : "list",
     max_events_per_day:
       Number.isInteger(config.max_events_per_day) && config.max_events_per_day > 0
@@ -339,6 +345,7 @@ class HaMonthCalendarCard extends HTMLElement {
       agenda_show_description: false,
       agenda_align_spacer: false,
       agenda_grouping: "event",
+      agenda_day_header_align: "left",
       show_title: true,
       calendars: first
         ? [{ entity: first, name: first, color: DEFAULT_COLOR, icon: DEFAULT_ICON }]
@@ -688,7 +695,7 @@ class HaMonthCalendarCard extends HTMLElement {
           const rows = dayItems.map((item) => renderRow(item, false)).join("");
           return `
             <div class="agenda-day-group">
-              <div class="agenda-day-header">${this._escape(headerLabel)}</div>
+              <div class="agenda-day-header" style="text-align:${cfg.agenda_day_header_align};">${this._escape(headerLabel)}</div>
               ${rows}
             </div>`;
         })
@@ -1278,6 +1285,18 @@ class HaMonthCalendarCardEditor extends HTMLElement {
               <option value="day" ${c.agenda_grouping === "day" ? "selected" : ""}>Day (events grouped under a day header)</option>
             </select>
           </label>
+          ${
+            c.agenda_grouping === "day"
+              ? `<label class="field">
+                   <span class="field-label">Day header alignment</span>
+                   <select id="agenda-day-header-align">
+                     <option value="left" ${c.agenda_day_header_align === "left" ? "selected" : ""}>Left</option>
+                     <option value="center" ${c.agenda_day_header_align === "center" ? "selected" : ""}>Center</option>
+                     <option value="right" ${c.agenda_day_header_align === "right" ? "selected" : ""}>Right</option>
+                   </select>
+                 </label>`
+              : ""
+          }
         </div>
         <div class="row-2">
           <label class="field field-checkbox">
@@ -1459,6 +1478,14 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     if (agendaGrouping) {
       agendaGrouping.addEventListener("change", (e) => {
         this._updateTopLevel("agenda_grouping", e.target.value === "day" ? "day" : "event");
+      });
+    }
+
+    const agendaDayHeaderAlign = root.getElementById("agenda-day-header-align");
+    if (agendaDayHeaderAlign) {
+      agendaDayHeaderAlign.addEventListener("change", (e) => {
+        const v = e.target.value;
+        this._updateTopLevel("agenda_day_header_align", v === "center" || v === "right" ? v : "left");
       });
     }
 
