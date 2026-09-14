@@ -1,22 +1,32 @@
 /**
  * Month Calendar Card for Home Assistant
  * -----------------------------------------------------------------------
- * A full-month calendar Lovelace card that:
- *   - Always shows the current month (with dimmed lead/trail days from
- *     the previous/next month so every week row is complete). There is
- *     no back/forward navigation — the card simply tracks "now".
+ * A Lovelace calendar card with two card-wide views:
+ *   - Month grid: always shows the current month (trimmed to only the
+ *     weeks it needs, 4-6 rows) — no back/forward navigation, it simply
+ *     tracks "now" and rolls over automatically.
+ *   - Agenda / upcoming list: a flat, scrollable list of upcoming events
+ *     over an adjustable number of days ahead, each row showing the
+ *     event's calendar icon, title, location (falling back to the
+ *     calendar's display name), time range, and a relative day label
+ *     ("today" / "tomorrow" / "in N days"). Today's events get a
+ *     configurable highlight background color.
  *   - Lets you add one or more `calendar.*` entities, each with its own
  *     icon and color.
- *   - Lets you set the first day of the week (Mon, Tue, Wed, Thu, Fri,
- *     Sat, Sun - any starting day).
- *   - Lets you control the font size of the month/year header.
+ *   - Lets you set the first day of the week (month view) and control
+ *     the header text size.
  *   - Lets you choose, card-wide, whether clicking an event opens Home
  *     Assistant's built-in "more info" dialog for that calendar, or does
- *     nothing at all.
+ *     nothing at all. This card is view-only — it never creates or
+ *     edits calendar events.
  *   - Works in the Lovelace "Sections" view (declares default grid
  *     sizing via getLayoutOptions) as well as classic Masonry views.
  *   - Ships a full visual (GUI) editor — no YAML required — including a
- *     native Material Design Icons picker for each calendar's icon.
+ *     native Material Design Icons picker for each calendar's icon, and
+ *     collapsible calendar rows (existing calendars collapse down to a
+ *     tidy summary line; a newly-added calendar opens expanded). The
+ *     editor only shows the config fields relevant to whichever view is
+ *     currently selected.
  *
  * INSTALL
  * -----------------------------------------------------------------------
@@ -29,13 +39,17 @@
  *    configure it with the visual editor, or drop in YAML directly:
  *
  * type: custom:ha-month-calendar-card
- * title: Family Calendar          # optional, defaults to "Month Year"
+ * view: month                     # month | agenda, defaults to "month"
+ * title: Family Calendar          # optional, defaults to "Month Year" / "Next N days"
  * header_font_size: 20            # optional, px, defaults to 20
- * first_day_of_week: monday       # sunday | monday | tuesday | wednesday
- *                                  # thursday | friday | saturday
  * tap_action: more-info           # more-info | none
  * show_legend: true               # optional, defaults to true
- * max_events_per_day: 3           # optional, defaults to 3
+ * first_day_of_week: monday       # month view only: sunday | monday | tuesday
+ *                                  # wednesday | thursday | friday | saturday
+ * event_display: list             # month view only: list | icon
+ * max_events_per_day: 3           # month view only, defaults to 3
+ * agenda_days: 14                 # agenda view only, defaults to 14
+ * agenda_today_color: '#ffca28'   # agenda view only, defaults to '#ffca28'
  * calendars:
  *   - entity: calendar.personal
  *     name: Personal
@@ -64,6 +78,8 @@ const WEEKDAY_ORDER = [
 const DEFAULT_COLOR = "#03a9f4";
 const DEFAULT_ICON = "mdi:calendar";
 const DEFAULT_HEADER_SIZE = 20;
+const DEFAULT_AGENDA_DAYS = 14;
+const DEFAULT_TODAY_COLOR = "#ffca28";
 
 function firstDayIndex(name) {
   const idx = WEEKDAY_ORDER.indexOf((name || "sunday").toLowerCase());
@@ -84,6 +100,10 @@ function isSameDay(a, b) {
   );
 }
 
+function daysBetween(a, b) {
+  return Math.round((startOfDay(b).getTime() - startOfDay(a).getTime()) / DAY_MS);
+}
+
 // Parse a HA calendar API event start/end field, which is either
 // { date: 'YYYY-MM-DD' } (all-day) or { dateTime: ISOString } (timed).
 function parseEventBoundary(boundary) {
@@ -100,6 +120,23 @@ function parseEventBoundary(boundary) {
 
 function isAllDay(event) {
   return !!(event.start && event.start.date && !event.start.dateTime);
+}
+
+// "today" / "tomorrow" / "in N days" relative to the given reference day.
+// An event already under way (started before today but still ongoing)
+// counts as "today".
+function relativeDayLabel(evStart, evEnd, today) {
+  const startDay = startOfDay(evStart);
+  if (startDay <= today && evEnd > today) return "today";
+  const diff = daysBetween(today, startDay);
+  if (diff <= 0) return "today";
+  if (diff === 1) return "tomorrow";
+  return `in ${diff} days`;
+}
+
+function formatTimeRange(start, end) {
+  const fmt = { hour: "numeric", minute: "2-digit" };
+  return `${start.toLocaleTimeString(undefined, fmt)} – ${end.toLocaleTimeString(undefined, fmt)}`;
 }
 
 function contrastTextColor(hex) {
@@ -128,6 +165,7 @@ function normalizeConfig(config) {
   return {
     ...config,
     type: "custom:ha-month-calendar-card",
+    view: config.view === "agenda" ? "agenda" : "month",
     title: config.title || "",
     header_font_size:
       Number.isFinite(config.header_font_size) && config.header_font_size > 0
@@ -141,6 +179,11 @@ function normalizeConfig(config) {
       Number.isInteger(config.max_events_per_day) && config.max_events_per_day > 0
         ? config.max_events_per_day
         : 3,
+    agenda_days:
+      Number.isInteger(config.agenda_days) && config.agenda_days > 0
+        ? config.agenda_days
+        : DEFAULT_AGENDA_DAYS,
+    agenda_today_color: config.agenda_today_color || DEFAULT_TODAY_COLOR,
     calendars: Array.isArray(config.calendars)
       ? config.calendars.map((c) => ({
           entity: c.entity || "",
@@ -200,7 +243,7 @@ class HaMonthCalendarCard extends HTMLElement {
       this._refreshTimer = setInterval(() => {
         this._fetchKey = null;
         this._maybeFetchEvents();
-        this._render(); // catches month rollover at midnight too
+        this._render(); // catches month rollover / agenda window sliding at midnight too
       }, REFRESH_INTERVAL_MS);
     }
   }
@@ -239,10 +282,13 @@ class HaMonthCalendarCard extends HTMLElement {
     const first = calendarEntities[0];
     return {
       type: "custom:ha-month-calendar-card",
+      view: "month",
       first_day_of_week: "sunday",
       tap_action: "more-info",
       header_font_size: DEFAULT_HEADER_SIZE,
       event_display: "list",
+      agenda_days: DEFAULT_AGENDA_DAYS,
+      agenda_today_color: DEFAULT_TODAY_COLOR,
       calendars: first
         ? [{ entity: first, name: first, color: DEFAULT_COLOR, icon: DEFAULT_ICON }]
         : [{ entity: "calendar.personal", name: "Personal", color: DEFAULT_COLOR, icon: DEFAULT_ICON }],
@@ -270,13 +316,31 @@ class HaMonthCalendarCard extends HTMLElement {
     return { gridStart, gridEnd, year, month, totalCells };
   }
 
+  _agendaRange() {
+    const start = startOfDay(new Date());
+    const days = this._config.agenda_days || DEFAULT_AGENDA_DAYS;
+    const end = new Date(start);
+    end.setDate(end.getDate() + days);
+    return { start, end };
+  }
+
+  _fetchRange() {
+    if (this._config.view === "agenda") {
+      const { start, end } = this._agendaRange();
+      return { start, end };
+    }
+    const { gridStart, gridEnd } = this._gridRange();
+    return { start: gridStart, end: gridEnd };
+  }
+
   async _maybeFetchEvents() {
     if (!this._hass || !this._config) return;
-    const { gridStart, gridEnd } = this._gridRange();
+    const { start, end } = this._fetchRange();
     const key = JSON.stringify({
+      view: this._config.view,
       cals: this._config.calendars.map((c) => c.entity),
-      start: gridStart.toISOString(),
-      end: gridEnd.toISOString(),
+      start: start.toISOString(),
+      end: end.toISOString(),
     });
     if (key === this._fetchKey) return;
     this._fetchKey = key;
@@ -291,8 +355,8 @@ class HaMonthCalendarCard extends HTMLElement {
             .callApi(
               "GET",
               `calendars/${cal.entity}?start=${encodeURIComponent(
-                gridStart.toISOString()
-              )}&end=${encodeURIComponent(gridEnd.toISOString())}`
+                start.toISOString()
+              )}&end=${encodeURIComponent(end.toISOString())}`
             )
             .then((items) => (items || []).map((ev) => ({ ...ev, __cal: cal })))
             .catch((err) => {
@@ -353,6 +417,16 @@ class HaMonthCalendarCard extends HTMLElement {
     return now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   }
 
+  // The secondary context label shown under a custom title (or as the
+  // title itself when none is set) — different per view.
+  _contextLabel() {
+    if (this._config.view === "agenda") {
+      const days = this._config.agenda_days || DEFAULT_AGENDA_DAYS;
+      return `Next ${days} day${days === 1 ? "" : "s"}`;
+    }
+    return this._monthYearLabel();
+  }
+
   _renderStatusOnly() {
     if (!this.shadowRoot) return;
     const el = this.shadowRoot.querySelector(".status-line");
@@ -362,16 +436,12 @@ class HaMonthCalendarCard extends HTMLElement {
     }
   }
 
-  _render() {
-    if (!this._config || !this.shadowRoot) return;
-
+  _renderMonthBody() {
     const today = startOfDay(new Date());
     const { gridStart, totalCells } = this._gridRange();
     const weekdayLabels = this._weekdayLabels();
     const maxChips = this._config.max_events_per_day;
     const iconMode = this._config.event_display === "icon";
-    const headerSize = this._config.header_font_size || DEFAULT_HEADER_SIZE;
-    const subtitleSize = Math.max(12, Math.round(headerSize * 0.7));
 
     let cellsHtml = "";
     for (let i = 0; i < totalCells; i++) {
@@ -447,6 +517,73 @@ class HaMonthCalendarCard extends HTMLElement {
 
     const headerHtml = weekdayLabels.map((w) => `<div class="weekday">${w}</div>`).join("");
 
+    return `
+      <div class="weekday-row">${headerHtml}</div>
+      <div class="month-grid" style="grid-template-rows: repeat(${totalCells / 7}, 1fr);">${cellsHtml}</div>
+    `;
+  }
+
+  _renderAgendaBody() {
+    const { start, end } = this._agendaRange();
+    const today = startOfDay(new Date());
+    const todayColor = this._config.agenda_today_color || DEFAULT_TODAY_COLOR;
+    const todayTextColor = contrastTextColor(todayColor);
+
+    const items = this._events
+      .map((ev) => {
+        const s = parseEventBoundary(ev.start);
+        let e = parseEventBoundary(ev.end);
+        if (!s) return null;
+        if (!e) e = new Date(s.getTime() + DAY_MS);
+        return { ev, start: s, end: e, allDay: isAllDay(ev) };
+      })
+      .filter((item) => item && item.start < end && item.end > start)
+      .sort((a, b) => a.start - b.start);
+
+    if (!items.length) {
+      return `<div class="agenda-empty">No upcoming events.</div>`;
+    }
+
+    const rowsHtml = items
+      .map(({ ev, start: evStart, end: evEnd, allDay }) => {
+        const cal = ev.__cal;
+        const label = relativeDayLabel(evStart, evEnd, today);
+        const isToday = label === "today";
+        const subtitle = ev.location || cal.name || cal.entity;
+        const timeText = allDay ? "All day" : formatTimeRange(evStart, evEnd);
+        const rowStyle = isToday ? `background:${todayColor};` : "";
+        const textStyle = isToday ? `color:${todayTextColor};` : "";
+        const mutedStyle = isToday ? `color:${todayTextColor}; opacity:0.85;` : "";
+
+        return `
+          <div class="agenda-item ${isToday ? "is-today" : ""}"
+               data-entity="${cal.entity}"
+               data-clickable="${this._config.tap_action !== "none"}"
+               style="${rowStyle}"
+               title="${this._escape(ev.summary || "(No title)")}">
+            <ha-icon icon="${cal.icon}" class="agenda-icon" style="color:${isToday ? todayTextColor : cal.color};"></ha-icon>
+            <div class="agenda-text">
+              <div class="agenda-title" style="${textStyle}">${this._escape(ev.summary || "(No title)")}</div>
+              ${subtitle ? `<div class="agenda-subtitle" style="${mutedStyle}">${this._escape(subtitle)}</div>` : ""}
+              <div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>
+            </div>
+            <div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>
+          </div>`;
+      })
+      .join("");
+
+    return `<div class="agenda-list">${rowsHtml}</div>`;
+  }
+
+  _render() {
+    if (!this._config || !this.shadowRoot) return;
+
+    const isAgenda = this._config.view === "agenda";
+    const headerSize = this._config.header_font_size || DEFAULT_HEADER_SIZE;
+    const subtitleSize = Math.max(12, Math.round(headerSize * 0.7));
+    const contextLabel = this._contextLabel();
+    const bodyHtml = isAgenda ? this._renderAgendaBody() : this._renderMonthBody();
+
     const legendHtml = this._config.show_legend
       ? `<div class="legend">
           ${this._config.calendars
@@ -465,26 +602,25 @@ class HaMonthCalendarCard extends HTMLElement {
       <style>${this._styles()}</style>
       <ha-card>
         <div class="card-header">
-          <div class="title" style="font-size:${headerSize}px;">${this._escape(this._config.title || this._monthYearLabel())}</div>
+          <div class="title" style="font-size:${headerSize}px;">${this._escape(this._config.title || contextLabel)}</div>
         </div>
-        ${!this._config.title ? "" : `<div class="subtitle" style="font-size:${subtitleSize}px;">${this._escape(this._monthYearLabel())}</div>`}
+        ${!this._config.title ? "" : `<div class="subtitle" style="font-size:${subtitleSize}px;">${this._escape(contextLabel)}</div>`}
         <div class="status-line" style="display:${this._loading || this._error ? "block" : "none"}">
           ${this._escape(this._loading ? "Loading events…" : this._error || "")}
         </div>
-        <div class="weekday-row">${headerHtml}</div>
-        <div class="month-grid" style="grid-template-rows: repeat(${totalCells / 7}, 1fr);">${cellsHtml}</div>
+        <div class="card-body ${isAgenda ? "agenda-mode" : "month-mode"}">${bodyHtml}</div>
         ${legendHtml}
       </ha-card>
     `;
 
-    this.shadowRoot.querySelectorAll(".event-chip").forEach((chip) => {
-      if (chip.dataset.clickable === "true") {
-        chip.addEventListener("click", (e) => {
+    this.shadowRoot.querySelectorAll(".event-chip, .agenda-item").forEach((el) => {
+      if (el.dataset.clickable === "true") {
+        el.addEventListener("click", (e) => {
           e.stopPropagation();
-          this._onEventClick(chip.dataset.entity);
+          this._onEventClick(el.dataset.entity);
         });
       } else {
-        chip.classList.add("no-click");
+        el.classList.add("no-click");
       }
     });
   }
@@ -526,6 +662,12 @@ class HaMonthCalendarCard extends HTMLElement {
       .status-line {
         font-size: 0.85rem;
         color: var(--secondary-text-color);
+      }
+      .card-body {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
       }
       .weekday-row {
         display: grid;
@@ -630,6 +772,76 @@ class HaMonthCalendarCard extends HTMLElement {
         color: var(--secondary-text-color);
         padding-left: 2px;
       }
+      .agenda-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .agenda-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 4px;
+        border-bottom: 1px solid var(--divider-color, #e0e0e0);
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      .agenda-item:last-child {
+        border-bottom: none;
+      }
+      .agenda-item.no-click {
+        cursor: default;
+      }
+      .agenda-item:hover:not(.no-click) {
+        filter: brightness(0.97);
+      }
+      :host-context(.dark) .agenda-item:hover:not(.no-click) {
+        filter: brightness(1.15);
+      }
+      .agenda-icon {
+        flex-shrink: 0;
+        margin-top: 2px;
+        --mdc-icon-size: 20px;
+      }
+      .agenda-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .agenda-title {
+        font-weight: 500;
+        color: var(--primary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .agenda-subtitle {
+        font-size: 0.8rem;
+        color: var(--secondary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-top: 1px;
+      }
+      .agenda-time {
+        font-size: 0.78rem;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
+      .agenda-day-label {
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        color: var(--secondary-text-color);
+        padding-top: 2px;
+        white-space: nowrap;
+      }
+      .agenda-empty {
+        color: var(--secondary-text-color);
+        font-style: italic;
+        padding: 16px 4px;
+        text-align: center;
+      }
       .legend {
         display: flex;
         flex-wrap: wrap;
@@ -668,6 +880,14 @@ class HaMonthCalendarCard extends HTMLElement {
 // place and hand back the same reference, the live preview card never
 // sees a "new" config and appears frozen even though the field's own
 // value did change. Always clone on write.
+//
+// Calendar rows are individually collapsible. Each row gets a stable
+// internal uid (independent of its position in the array, so removing a
+// row in the middle can't scramble another row's collapsed state). The
+// FIRST time the editor sees an existing set of calendars, all of their
+// rows start collapsed (a tidy summary line); a calendar added afterwards
+// via "Add calendar" gets a fresh uid that is never collapsed by default,
+// so it opens expanded for filling in.
 
 class HaMonthCalendarCardEditor extends HTMLElement {
   constructor() {
@@ -676,12 +896,17 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     this._config = null;
     this._hass = null;
     this._rendered = false;
+    this._rowUids = [];
+    this._nextRowUid = 1;
+    this._collapsedUids = new Set();
+    this._rowsInitialized = false;
   }
 
   setConfig(config) {
     const normalized = normalizeConfig(config);
     const changed = !this._config || JSON.stringify(this._config) !== JSON.stringify(normalized);
     this._config = normalized;
+    this._syncRowUids();
     if (changed) this._needsRender = true;
     this._maybeRender();
   }
@@ -713,6 +938,42 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     this.dispatchEvent(event);
   }
 
+  // ---- collapsible-row uid bookkeeping -----------------------------------
+
+  _syncRowUids() {
+    const count = this._config.calendars.length;
+    if (!this._rowsInitialized) {
+      // Editor just opened on an existing (or stub) config: these rows
+      // are "existing" calendars, so they start collapsed.
+      this._rowUids = [];
+      for (let i = 0; i < count; i++) {
+        const uid = this._nextRowUid++;
+        this._rowUids.push(uid);
+        this._collapsedUids.add(uid);
+      }
+      this._rowsInitialized = true;
+      return;
+    }
+    // Keep uids aligned by position for anything we didn't already manage
+    // explicitly in _addCalendar/_removeCalendar (e.g. a raw YAML edit
+    // while the editor is open). New tail entries open expanded.
+    while (this._rowUids.length < count) {
+      this._rowUids.push(this._nextRowUid++);
+    }
+    if (this._rowUids.length > count) {
+      this._rowUids = this._rowUids.slice(0, count);
+    }
+  }
+
+  _toggleRow(uid) {
+    if (this._collapsedUids.has(uid)) {
+      this._collapsedUids.delete(uid);
+    } else {
+      this._collapsedUids.add(uid);
+    }
+    this._render();
+  }
+
   // ---- immutable update helpers -----------------------------------------
 
   _updateTopLevel(key, value) {
@@ -739,6 +1000,8 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     const nextEntity = available.find((e) => !used.has(e)) || "";
     const newCal = { entity: nextEntity, name: "", color: DEFAULT_COLOR, icon: DEFAULT_ICON };
     this._config = { ...this._config, calendars: [...this._config.calendars, newCal] };
+    // New row: fresh uid, left OUT of the collapsed set so it opens expanded.
+    this._rowUids = [...this._rowUids, this._nextRowUid++];
     this._needsRender = true;
     this._fireChanged();
     this._maybeRender();
@@ -746,6 +1009,9 @@ class HaMonthCalendarCardEditor extends HTMLElement {
 
   _removeCalendar(index) {
     const calendars = this._config.calendars.filter((_, i) => i !== index);
+    const removedUid = this._rowUids[index];
+    this._rowUids = this._rowUids.filter((_, i) => i !== index);
+    this._collapsedUids.delete(removedUid);
     this._config = { ...this._config, calendars };
     this._needsRender = true;
     this._fireChanged();
@@ -758,6 +1024,7 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     const c = this._config;
     const entityOptions = this._calendarEntities();
     const hasIconPicker = !!customElements.get("ha-icon-picker");
+    const isAgenda = c.view === "agenda";
 
     const weekdayOptionsHtml = WEEKDAY_ORDER.map(
       (w) =>
@@ -768,6 +1035,8 @@ class HaMonthCalendarCardEditor extends HTMLElement {
 
     const calendarsHtml = c.calendars
       .map((cal, i) => {
+        const uid = this._rowUids[i];
+        const collapsed = this._collapsedUids.has(uid);
         const entitySelectOptions = entityOptions
           .map((e) => `<option value="${e}" ${cal.entity === e ? "selected" : ""}>${e}</option>`)
           .join("");
@@ -780,36 +1049,80 @@ class HaMonthCalendarCardEditor extends HTMLElement {
           ? `<ha-icon-picker class="cal-icon" data-index="${i}"></ha-icon-picker>`
           : `<input class="cal-icon" data-index="${i}" type="text" placeholder="mdi:calendar" value="${this._escape(cal.icon)}" />`;
 
+        const summaryName = cal.name || cal.entity || "New calendar";
+
         return `
-          <div class="cal-row" data-index="${i}">
-            <div class="cal-row-line1">
-              <label class="field">
-                <span class="field-label">Calendar entity</span>
-                <select class="cal-entity" data-index="${i}">
-                  ${emptyOption}${fallbackOption}${entitySelectOptions}
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">Display name</span>
-                <input class="cal-name" data-index="${i}" type="text" placeholder="${this._escape(cal.entity) || "e.g. Personal"}" value="${this._escape(cal.name)}" />
-              </label>
-            </div>
-            <div class="cal-row-line2">
-              <label class="field">
-                <span class="field-label">Icon</span>
-                ${iconFieldHtml}
-              </label>
-              <label class="field field-small">
-                <span class="field-label">Color</span>
-                <input class="cal-color" data-index="${i}" type="color" value="${this._normalizeColorForInput(cal.color)}" />
-              </label>
+          <div class="cal-row ${collapsed ? "collapsed" : ""}" data-index="${i}">
+            <div class="cal-row-header">
+              <button class="chevron-btn" type="button" data-uid="${uid}" title="${collapsed ? "Expand" : "Collapse"}">
+                <ha-icon icon="${collapsed ? "mdi:chevron-right" : "mdi:chevron-down"}"></ha-icon>
+              </button>
+              <ha-icon icon="${cal.icon}" style="color:${cal.color}" class="cal-row-icon"></ha-icon>
+              <span class="cal-row-name">${this._escape(summaryName)}</span>
               <button class="remove-btn" type="button" data-index="${i}" title="Remove calendar">
                 <ha-icon icon="mdi:delete-outline"></ha-icon>
               </button>
             </div>
+            <div class="cal-row-body" ${collapsed ? "hidden" : ""}>
+              <div class="cal-row-line1">
+                <label class="field">
+                  <span class="field-label">Calendar entity</span>
+                  <select class="cal-entity" data-index="${i}">
+                    ${emptyOption}${fallbackOption}${entitySelectOptions}
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Display name</span>
+                  <input class="cal-name" data-index="${i}" type="text" placeholder="${this._escape(cal.entity) || "e.g. Personal"}" value="${this._escape(cal.name)}" />
+                </label>
+              </div>
+              <div class="cal-row-line2">
+                <label class="field">
+                  <span class="field-label">Icon</span>
+                  ${iconFieldHtml}
+                </label>
+                <label class="field field-small">
+                  <span class="field-label">Color</span>
+                  <input class="cal-color" data-index="${i}" type="color" value="${this._normalizeColorForInput(cal.color)}" />
+                </label>
+              </div>
+            </div>
           </div>`;
       })
       .join("");
+
+    const viewSpecificHtml = isAgenda
+      ? `
+        <div class="row-2">
+          <label class="field field-small">
+            <span class="field-label">Days to show ahead</span>
+            <input id="agenda-days" type="number" min="1" max="90" value="${c.agenda_days}" />
+          </label>
+          <label class="field field-small">
+            <span class="field-label">Today highlight color</span>
+            <input id="agenda-today-color" type="color" value="${this._normalizeColorForInput(c.agenda_today_color)}" />
+          </label>
+        </div>`
+      : `
+        <div class="row-2">
+          <label class="field">
+            <span class="field-label">First day of week</span>
+            <select id="first-day">${weekdayOptionsHtml}</select>
+          </label>
+          <label class="field">
+            <span class="field-label">Event display</span>
+            <select id="event-display">
+              <option value="list" ${c.event_display === "list" ? "selected" : ""}>Full event list</option>
+              <option value="icon" ${c.event_display === "icon" ? "selected" : ""}>Calendar icon only</option>
+            </select>
+          </label>
+        </div>
+        <div class="row-2">
+          <label class="field field-small">
+            <span class="field-label">Max items shown per day</span>
+            <input id="max-events" type="number" min="1" max="10" value="${c.max_events_per_day}" />
+          </label>
+        </div>`;
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -817,13 +1130,16 @@ class HaMonthCalendarCardEditor extends HTMLElement {
         <div class="section">
           <label class="field">
             <span class="field-label">Title (optional)</span>
-            <input id="title" type="text" placeholder="Defaults to current month + year" value="${this._escape(c.title)}" />
+            <input id="title" type="text" placeholder="Defaults to current month + year / date range" value="${this._escape(c.title)}" />
           </label>
 
           <div class="row-2">
             <label class="field">
-              <span class="field-label">First day of week</span>
-              <select id="first-day">${weekdayOptionsHtml}</select>
+              <span class="field-label">Card view</span>
+              <select id="view-mode">
+                <option value="month" ${!isAgenda ? "selected" : ""}>Month grid</option>
+                <option value="agenda" ${isAgenda ? "selected" : ""}>Agenda / upcoming list</option>
+              </select>
             </label>
             <label class="field">
               <span class="field-label">On event click</span>
@@ -835,29 +1151,17 @@ class HaMonthCalendarCardEditor extends HTMLElement {
           </div>
 
           <div class="row-2">
-            <label class="field">
-              <span class="field-label">Event display</span>
-              <select id="event-display">
-                <option value="list" ${c.event_display === "list" ? "selected" : ""}>Full event list</option>
-                <option value="icon" ${c.event_display === "icon" ? "selected" : ""}>Calendar icon only</option>
-              </select>
-            </label>
             <label class="field field-small">
-              <span class="field-label">Month/year text size (px)</span>
+              <span class="field-label">Header text size (px)</span>
               <input id="header-size" type="number" min="10" max="60" value="${c.header_font_size}" />
-            </label>
-          </div>
-
-          <div class="row-2">
-            <label class="field field-small">
-              <span class="field-label">Max items shown per day</span>
-              <input id="max-events" type="number" min="1" max="10" value="${c.max_events_per_day}" />
             </label>
             <label class="field field-checkbox">
               <input id="show-legend" type="checkbox" ${c.show_legend ? "checked" : ""} />
               <span class="field-label">Show calendar legend</span>
             </label>
           </div>
+
+          ${viewSpecificHtml}
         </div>
 
         <div class="section">
@@ -883,16 +1187,14 @@ class HaMonthCalendarCardEditor extends HTMLElement {
       this._updateTopLevel("title", e.target.value);
     });
 
-    root.getElementById("first-day").addEventListener("change", (e) => {
-      this._updateTopLevel("first_day_of_week", e.target.value);
+    root.getElementById("view-mode").addEventListener("change", (e) => {
+      this._updateTopLevel("view", e.target.value);
+      this._needsRender = true;
+      this._maybeRender();
     });
 
     root.getElementById("tap-action").addEventListener("change", (e) => {
       this._updateTopLevel("tap_action", e.target.value);
-    });
-
-    root.getElementById("event-display").addEventListener("change", (e) => {
-      this._updateTopLevel("event_display", e.target.value);
     });
 
     root.getElementById("header-size").addEventListener("input", (e) => {
@@ -900,16 +1202,56 @@ class HaMonthCalendarCardEditor extends HTMLElement {
       this._updateTopLevel("header_font_size", Number.isInteger(v) && v > 0 ? v : DEFAULT_HEADER_SIZE);
     });
 
-    root.getElementById("max-events").addEventListener("change", (e) => {
-      const v = parseInt(e.target.value, 10);
-      this._updateTopLevel("max_events_per_day", Number.isInteger(v) && v > 0 ? v : 3);
-    });
-
     root.getElementById("show-legend").addEventListener("change", (e) => {
       this._updateTopLevel("show_legend", e.target.checked);
     });
 
+    const firstDay = root.getElementById("first-day");
+    if (firstDay) {
+      firstDay.addEventListener("change", (e) => {
+        this._updateTopLevel("first_day_of_week", e.target.value);
+      });
+    }
+
+    const eventDisplay = root.getElementById("event-display");
+    if (eventDisplay) {
+      eventDisplay.addEventListener("change", (e) => {
+        this._updateTopLevel("event_display", e.target.value);
+      });
+    }
+
+    const maxEvents = root.getElementById("max-events");
+    if (maxEvents) {
+      maxEvents.addEventListener("change", (e) => {
+        const v = parseInt(e.target.value, 10);
+        this._updateTopLevel("max_events_per_day", Number.isInteger(v) && v > 0 ? v : 3);
+      });
+    }
+
+    const agendaDays = root.getElementById("agenda-days");
+    if (agendaDays) {
+      agendaDays.addEventListener("change", (e) => {
+        const v = parseInt(e.target.value, 10);
+        this._updateTopLevel("agenda_days", Number.isInteger(v) && v > 0 ? v : DEFAULT_AGENDA_DAYS);
+      });
+    }
+
+    const agendaTodayColor = root.getElementById("agenda-today-color");
+    if (agendaTodayColor) {
+      agendaTodayColor.addEventListener("input", (e) => {
+        this._updateTopLevel("agenda_today_color", e.target.value);
+      });
+    }
+
     root.getElementById("add-cal").addEventListener("click", () => this._addCalendar());
+
+    root.querySelectorAll(".chevron-btn").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const uid = parseInt(e.currentTarget.dataset.uid, 10);
+        this._toggleRow(uid);
+      });
+    });
 
     root.querySelectorAll(".cal-entity").forEach((el) => {
       el.addEventListener("change", (e) => {
@@ -955,6 +1297,7 @@ class HaMonthCalendarCardEditor extends HTMLElement {
 
     root.querySelectorAll(".remove-btn").forEach((el) => {
       el.addEventListener("click", (e) => {
+        e.stopPropagation();
         const index = parseInt(e.currentTarget.dataset.index, 10);
         this._removeCalendar(index);
       });
@@ -1055,6 +1398,48 @@ class HaMonthCalendarCardEditor extends HTMLElement {
         flex-direction: column;
         gap: 8px;
       }
+      .cal-row.collapsed {
+        gap: 0;
+      }
+      .cal-row-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .chevron-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--secondary-text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+      }
+      .cal-row-icon {
+        flex-shrink: 0;
+        --mdc-icon-size: 18px;
+      }
+      .cal-row-name {
+        flex: 1;
+        font-size: 0.9rem;
+        color: var(--primary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cal-row-body {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .cal-row-body[hidden] {
+        display: none;
+      }
       .cal-row-line1 {
         display: grid;
         grid-template-columns: 1.6fr 1.4fr;
@@ -1062,7 +1447,7 @@ class HaMonthCalendarCardEditor extends HTMLElement {
       }
       .cal-row-line2 {
         display: grid;
-        grid-template-columns: 1.6fr 0.8fr auto;
+        grid-template-columns: 1.6fr 0.8fr;
         gap: 8px;
         align-items: end;
       }
@@ -1075,8 +1460,9 @@ class HaMonthCalendarCardEditor extends HTMLElement {
         align-items: center;
         justify-content: center;
         border-radius: 4px;
-        width: 36px;
-        height: 36px;
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
       }
       .remove-btn:hover {
         filter: brightness(0.9);
@@ -1118,6 +1504,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "ha-month-calendar-card",
   name: "Month Calendar Card",
-  description: "A full month calendar with multiple calendar sources, per-calendar icon/color, adjustable header size, and a GUI editor with a native icon picker.",
+  description: "A month grid or agenda-list calendar card with multiple calendar sources, per-calendar icon/color, and a GUI editor with a native icon picker.",
   preview: false,
 });

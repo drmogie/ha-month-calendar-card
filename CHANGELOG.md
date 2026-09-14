@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026.09.14.2
+
+- Added a second card-wide view: **Agenda / upcoming list** — a
+  scrollable flat list of upcoming events over an adjustable number of
+  days ahead (`agenda_days`, default 14), each row showing the event's
+  calendar-defined icon, title, location (falling back to the calendar's
+  display name), time range, and a relative label ("today" / "tomorrow"
+  / "in N days"). Card is still view-only — no event creation/editing.
+- Added a configurable highlight background color for today's events in
+  the agenda view (`agenda_today_color`), with automatic contrasting
+  text.
+- GUI editor now has a "Card view" selector and only shows the config
+  fields relevant to the selected view (month-grid-only fields like
+  first day of week / event display / max items per day are hidden in
+  agenda mode, and vice versa for the new agenda fields).
+- Calendar rows in the GUI editor are now individually collapsible:
+  existing calendars start collapsed to a tidy icon/color/name summary
+  line, and a newly-added calendar opens expanded for setup.
+
 ## 2026.09.14.1
 
 Initial release.

@@ -1,30 +1,39 @@
 # Month Calendar Card (Home Assistant)
 
-A full-month calendar Lovelace card:
+A view-only Lovelace calendar card with two card-wide views:
 
-- Always shows the **current month**, trimmed to only the weeks that
-  actually contain a day from that month (4–6 rows, whatever the month
-  needs) — no dangling all-other-month week at the end. There's no
-  back/forward navigation — the card just tracks "now" and rolls over
-  automatically at midnight / month-end.
+- **Month grid** — always shows the **current month**, trimmed to only
+  the weeks that actually contain a day from that month (4–6 rows,
+  whatever the month needs) — no dangling all-other-month week at the
+  end. There's no back/forward navigation — the card just tracks "now"
+  and rolls over automatically at midnight / month-end.
+- **Agenda / upcoming list** — a scrollable flat list of upcoming events
+  over an adjustable number of days ahead, each row showing the event's
+  calendar icon, title, location (falling back to the calendar's display
+  name), time range, and a relative label ("today" / "tomorrow" / "in N
+  days"). Today's events get their own configurable highlight color.
 - Add **any number of `calendar.*` entities**, each with its own **icon**
   and **color**.
-- **Two event display modes**: a full list of event chips (one per
-  event, with title), or a compact mode that shows just one small icon
-  per calendar that has an event that day — even if that calendar has
-  several events, it only appears once.
+- **Two event display modes in the month grid**: a full list of event
+  chips (one per event, with title), or a compact mode that shows just
+  one small icon per calendar that has an event that day — even if that
+  calendar has several events, it only appears once.
 - Set the **first day of the week** to whichever day you like (Mon, Tue,
-  Wed, Thu, Fri, Sat, or Sun).
-- Adjustable **month/year header text size**.
+  Wed, Thu, Fri, Sat, or Sun) — month grid only.
+- Adjustable **header text size**.
 - One **card-wide tap setting**: clicking an event either opens Home
   Assistant's built-in "more info" dialog for that calendar, or does
-  nothing (`tap_action: more-info` / `tap_action: none`).
-- A small color+icon legend under the grid (optional).
+  nothing (`tap_action: more-info` / `tap_action: none`). This card is
+  view-only — it never creates or edits calendar events.
+- A small color+icon legend under the grid/list (optional).
 - Full **visual (GUI) editor** — no YAML required, though YAML is still
-  supported if you prefer it.
+  supported if you prefer it. The editor only shows the fields that
+  apply to whichever view you've picked, and each calendar's row is
+  collapsible — existing calendars start collapsed to a tidy summary
+  line, and a newly-added calendar opens expanded for setup.
 - Scales with the card's box in a **Lovelace "Sections"** dashboard
-  (resize width/height and the grid follows), and falls back gracefully
-  in a classic **Masonry** dashboard.
+  (resize width/height and the grid/list follows), and falls back
+  gracefully in a classic **Masonry** dashboard.
 
 ## 1. Install the file
 
@@ -59,17 +68,22 @@ Edit a dashboard, click **Add Card**, and pick **Month Calendar Card**
 from the picker (search "Month Calendar" if it's not visible). You'll
 get a form where you can:
 
-- Set an optional title, first day of week, and the click behavior for
-  events (more-info dialog or nothing).
-- Choose between the full event list or the compact icon-only display.
-- Set the month/year header's text size in pixels.
-- Toggle the legend and set how many items show per day before
-  collapsing to "+N more".
-- Add/remove calendars. Each calendar row has the entity dropdown and
-  display name on one line, and the icon, color, and a red delete
-  button on the line below. The icon field uses Home Assistant's native
-  Material Design Icons picker — search by name instead of typing
-  `mdi:` strings.
+- Set an optional title, pick the card **view** (Month grid or Agenda /
+  upcoming list), and choose the click behavior for events (more-info
+  dialog or nothing).
+- Set the header text size in pixels and toggle the legend — the form
+  below that only shows the fields for whichever view you picked:
+  - **Month grid**: first day of week, full event list vs. compact
+    icon-only display, and how many items show per day before
+    collapsing to "+N more".
+  - **Agenda / upcoming list**: how many days ahead to show, and a color
+    picker for today's highlight background.
+- Add/remove calendars. Each calendar starts as a collapsed row showing
+  just its icon, color, and name — click the chevron to expand it and
+  edit the entity, display name, icon, and color. A newly-added calendar
+  opens expanded automatically so you can fill it in right away. The
+  icon field uses Home Assistant's native Material Design Icons picker —
+  search by name instead of typing `mdi:` strings.
 
 This works the same whether you're editing a classic (Masonry) dashboard
 or a **Sections** dashboard — just drag the card into a section
@@ -81,14 +95,17 @@ Add a card, choose **Manual**, and paste something like:
 
 ```yaml
 type: custom:ha-month-calendar-card
-title: Family Calendar          # optional — defaults to "Month Year"
+view: month                     # optional — month | agenda, defaults to "month"
+title: Family Calendar          # optional — defaults to "Month Year" / "Next N days"
 header_font_size: 20            # optional, px, defaults to 20
-first_day_of_week: monday       # sunday | monday | tuesday | wednesday
-                                 # thursday | friday | saturday
 tap_action: more-info           # more-info | none
-event_display: list             # list | icon
 show_legend: true               # optional, default true
-max_events_per_day: 3           # optional, default 3
+first_day_of_week: monday       # month view only: sunday | monday | tuesday
+                                 # wednesday | thursday | friday | saturday
+event_display: list             # month view only: list | icon
+max_events_per_day: 3           # month view only, default 3
+agenda_days: 14                 # agenda view only, default 14
+agenda_today_color: '#ffca28'   # agenda view only, default '#ffca28'
 calendars:
   - entity: calendar.personal
     name: Personal
@@ -110,16 +127,19 @@ calendars:
 |------------------------|----------|------------------|------------------------------------------------------------------------|
 | `calendars`            | yes      | —                | List of calendar entries, each needs `entity`.                        |
 | `calendars[].entity`   | yes      | —                | A `calendar.*` entity id.                                              |
-| `calendars[].name`     | no       | entity id        | Shown in the legend.                                                   |
-| `calendars[].color`    | no       | `#03a9f4`        | Any CSS color; used for the event chip / icon background and legend swatch. |
-| `calendars[].icon`     | no       | `mdi:calendar`   | Any `mdi:` icon; shown on each event chip and in the legend.           |
+| `calendars[].name`     | no       | entity id        | Shown in the legend and as an agenda-item's fallback subtitle.         |
+| `calendars[].color`    | no       | `#03a9f4`        | Any CSS color; used for the event chip / icon color and legend swatch. |
+| `calendars[].icon`     | no       | `mdi:calendar`   | Any `mdi:` icon; shown on each event chip/agenda row and in the legend.|
+| `view`                 | no       | `month`          | `month` shows the month grid; `agenda` shows a scrollable upcoming-events list. |
 | `title`                | no       | current month/yr | Card title text.                                                       |
-| `header_font_size`     | no       | `20`             | Font size (px) of the month/year header text.                          |
-| `first_day_of_week`    | no       | `sunday`         | `sunday`, `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`. |
-| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `none` disables clicking. |
-| `event_display`        | no       | `list`           | `list` shows one chip per event with its title; `icon` collapses each calendar to a single icon per day, deduped even if that calendar has multiple events that day. |
-| `show_legend`          | no       | `true`           | Toggles the calendar name/color/icon legend under the grid.            |
-| `max_events_per_day`   | no       | `3`              | How many items (event chips, or calendar icons in icon mode) show before collapsing to "+N more". |
+| `header_font_size`     | no       | `20`             | Font size (px) of the header text (month/year, or your custom title).  |
+| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `none` disables clicking. Applies to both views — this card never creates or edits events. |
+| `show_legend`          | no       | `true`           | Toggles the calendar name/color/icon legend under the grid/list.       |
+| `first_day_of_week`    | no       | `sunday`         | **Month view only.** `sunday`, `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`. |
+| `event_display`        | no       | `list`           | **Month view only.** `list` shows one chip per event with its title; `icon` collapses each calendar to a single icon per day, deduped even if that calendar has multiple events that day. |
+| `max_events_per_day`   | no       | `3`              | **Month view only.** How many items (event chips, or calendar icons in icon mode) show before collapsing to "+N more". |
+| `agenda_days`          | no       | `14`             | **Agenda view only.** How many days ahead (including today) to fetch and list events for. |
+| `agenda_today_color`   | no       | `#ffca28`        | **Agenda view only.** Background highlight color for events happening today; text color is chosen automatically for readability. |
 
 ## Notes on behavior
 
@@ -151,19 +171,26 @@ calendars:
   own at midnight/month-end.
 - **Events are fetched** from Home Assistant's calendar REST API
   (`/api/calendars/<entity>?start=...&end=...`) for the full visible
-  grid, so lead/trail days from adjacent months will also show their
-  events. It refreshes automatically every 5 minutes.
+  grid (month view) or the configured `agenda_days` window (agenda
+  view), so lead/trail days from adjacent months will also show their
+  events in month view. It refreshes automatically every 5 minutes, and
+  switching views/adjusting `agenda_days` re-fetches immediately.
 - **`tap_action: more-info`** fires HA's standard `hass-more-info` event
   scoped to the event's calendar entity — the same dialog you'd get
   clicking that calendar entity elsewhere in the UI (shows its upcoming
   agenda). Home Assistant calendar events themselves don't have their
   own entity id, so this is the native "more info" surface available for
-  calendars.
+  calendars. This card is view-only — it has no way to create or edit
+  events; you'll always end up at that same more-info dialog (or none,
+  with `tap_action: none`).
 - All-day and timed events are both supported and correctly matched to
-  the day(s) they span.
-- Colors are used as the event chip / icon background; text color
-  (black/white) is chosen automatically for readability against your
-  chosen color.
+  the day(s)/rows they span. In the agenda view, an event already under
+  way (started before today but still ongoing) is labeled "today".
+- Colors are used as the event chip / icon color (and the month grid's
+  icon-mode chip background); text color (black/white) is chosen
+  automatically for readability against your chosen color. In the
+  agenda view, an event's location is shown as its subtitle when the
+  calendar provides one, falling back to the calendar's display name.
 
 ## Troubleshooting
 
