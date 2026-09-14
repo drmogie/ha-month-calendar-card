@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.09.14.5
+
+- Added `agenda_grouping` (agenda view only, default `event`): switch to
+  `day` to group agenda rows under a day header (Today / Tomorrow /
+  Weekday, Mon D) instead of repeating a relative day label on every
+  row — useful when several events fall on the same day. Editor: new
+  "Group by" dropdown in the Agenda-view-only section.
+
 ## 2026.09.14.4
 
 - Fixed: a title made of only spaces (e.g. typed then "cleared" with a

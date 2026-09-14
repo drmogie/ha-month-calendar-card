@@ -10,12 +10,15 @@ A view-only Lovelace calendar card with two card-wide views:
 - **Agenda / upcoming list** — a scrollable flat list of upcoming events
   over an adjustable number of days ahead, each row showing the event's
   calendar icon, title, and a relative label ("today" / "tomorrow" / "in
-  N days"). The calendar name, time, location, and description lines can
-  each be independently shown or hidden. Today's events get their own
-  configurable highlight color, and your custom title (if set) is used
-  as the header here too, same as in the month grid. An optional spacer
-  can align its first row with the month grid's weekday header, for
-  placing both views side by side.
+  N days"). Can be grouped either **by event** (the default — every event
+  is its own row) or **by day** (a day header — Today / Tomorrow /
+  Weekday, Mon D — shown once, with that day's events listed underneath
+  it, no repeated label per row). The calendar name, time, location, and
+  description lines can each be independently shown or hidden. Today's
+  events get their own configurable highlight color, and your custom
+  title (if set) is used as the header here too, same as in the month
+  grid. An optional spacer can align its first row with the month grid's
+  weekday header, for placing both views side by side.
 - **Hide the title text while keeping the header size.** `show_title:
   false` hides the header's text but keeps its reserved space, so
   `header_font_size` still controls the row height — handy if you just
@@ -85,9 +88,9 @@ get a form where you can:
     icon-only display, and how many items show per day before
     collapsing to "+N more".
   - **Agenda / upcoming list**: how many days ahead to show, a color
-    picker for today's highlight background, and four checkboxes to
-    show/hide the calendar name, time, location, and description on
-    each event row.
+    picker for today's highlight background, a "Group by" choice
+    (Event or Day), and four checkboxes to show/hide the calendar name,
+    time, location, and description on each event row.
 - Add/remove calendars. Each calendar starts as a collapsed row showing
   just its icon, color, and name — click the chevron to expand it and
   edit the entity, display name, icon, and color. A newly-added calendar
@@ -118,6 +121,7 @@ event_display: list             # month view only: list | icon
 max_events_per_day: 3           # month view only, default 3
 agenda_days: 14                 # agenda view only, default 14
 agenda_today_color: '#ffca28'   # agenda view only, default '#ffca28'
+agenda_grouping: event          # agenda view only: event | day, default "event"
 agenda_show_calendar: true      # agenda view only, default true
 agenda_show_time: true          # agenda view only, default true
 agenda_show_location: true      # agenda view only, default true
@@ -160,6 +164,7 @@ calendars:
 | `max_events_per_day`   | no       | `3`              | **Month view only.** How many items (event chips, or calendar icons in icon mode) show before collapsing to "+N more". |
 | `agenda_days`          | no       | `14`             | **Agenda view only.** How many days ahead (including today) to fetch and list events for. |
 | `agenda_today_color`   | no       | `#ffca28`        | **Agenda view only.** Background highlight color for events happening today; text color is chosen automatically for readability. |
+| `agenda_grouping`      | no       | `event`          | **Agenda view only.** `event` shows one row per event with its own relative day label; `day` groups events under a day header (Today / Tomorrow / Weekday, Mon D) shown once, with the label removed from each row underneath it. |
 | `agenda_show_calendar` | no       | `true`           | **Agenda view only.** Show each event's calendar display name as a line under the title. |
 | `agenda_show_time`     | no       | `true`           | **Agenda view only.** Show the time range (or "All day") under the title. |
 | `agenda_show_location` | no       | `true`           | **Agenda view only.** Show the event's location, when the calendar provides one. |
@@ -214,6 +219,13 @@ calendars:
 - Colors are used as the event chip / icon color (and the month grid's
   icon-mode chip background); text color (black/white) is chosen
   automatically for readability against your chosen color.
+- **Agenda grouping.** By default the agenda view lists one row per event,
+  each with its own relative day label ("today" / "tomorrow" / "in N
+  days") — several events on the same day each repeat that label. Switch
+  `agenda_grouping` to `day` to instead show the day once, as a header
+  (Today / Tomorrow / a weekday-and-date for anything further out),
+  with that day's events listed underneath and no repeated label per
+  row.
 - **Agenda row content is independently configurable.** Each event row
   can show or hide its calendar name, time, location, and description
   lines separately (`agenda_show_*` options) — a line is only shown when

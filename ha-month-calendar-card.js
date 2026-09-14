@@ -8,11 +8,13 @@
  *   - Agenda / upcoming list: a flat, scrollable list of upcoming events
  *     over an adjustable number of days ahead, each row showing the
  *     event's calendar icon, title, and a relative day label ("today" /
- *     "tomorrow" / "in N days"). The calendar name, time, location, and
- *     description lines can each be independently shown or hidden.
- *     Today's events get a configurable highlight background color. Your
- *     custom title (if set) is used as the header in this view too, the
- *     same as in the month grid.
+ *     "tomorrow" / "in N days"). Can instead be grouped by day, with a
+ *     day header (Today / Tomorrow / Weekday, Mon D) shown once above
+ *     each day's events instead of repeating the label per row. The
+ *     calendar name, time, location, and description lines can each be
+ *     independently shown or hidden. Today's events get a configurable
+ *     highlight background color. Your custom title (if set) is used as
+ *     the header in this view too, the same as in the month grid.
  *   - Lets you add one or more `calendar.*` entities, each with its own
  *     icon and color.
  *   - Lets you set the first day of the week (month view) and control
@@ -61,6 +63,10 @@
  * agenda_align_spacer: false      # agenda view only, defaults to false — adds a
  *                                  # spacer the height of the month grid's weekday
  *                                  # row, so events line up with it side-by-side
+ * agenda_grouping: event          # agenda view only: event | day, defaults to "event"
+ *                                  # "day" groups events under a day header (Today,
+ *                                  # Tomorrow, Weekday, Mon D) instead of repeating a
+ *                                  # relative label on every row
  * calendars:
  *   - entity: calendar.personal
  *     name: Personal
@@ -145,6 +151,16 @@ function relativeDayLabel(evStart, evEnd, today) {
   return `in ${diff} days`;
 }
 
+// Header label for a day-group in the agenda view's "group by day" mode:
+// "Today" / "Tomorrow", then "Weekday, Mon D" beyond that (an actual date
+// disambiguates same-labeled days better than repeating "in N days").
+function dayGroupLabel(day, today) {
+  const diff = daysBetween(today, day);
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  return day.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
 function formatTimeRange(start, end) {
   const fmt = { hour: "numeric", minute: "2-digit" };
   return `${start.toLocaleTimeString(undefined, fmt)} – ${end.toLocaleTimeString(undefined, fmt)}`;
@@ -197,6 +213,7 @@ function normalizeConfig(config) {
     tap_action: config.tap_action === "none" ? "none" : "more-info",
     show_legend: config.show_legend !== false,
     agenda_align_spacer: config.agenda_align_spacer === true,
+    agenda_grouping: config.agenda_grouping === "day" ? "day" : "event",
     event_display: config.event_display === "icon" ? "icon" : "list",
     max_events_per_day:
       Number.isInteger(config.max_events_per_day) && config.max_events_per_day > 0
@@ -321,6 +338,7 @@ class HaMonthCalendarCard extends HTMLElement {
       agenda_show_location: true,
       agenda_show_description: false,
       agenda_align_spacer: false,
+      agenda_grouping: "event",
       show_title: true,
       calendars: first
         ? [{ entity: first, name: first, color: DEFAULT_COLOR, icon: DEFAULT_ICON }]
@@ -578,56 +596,89 @@ class HaMonthCalendarCard extends HTMLElement {
     }
 
     const cfg = this._config;
-    const rowsHtml = items
-      .map(({ ev, start: evStart, end: evEnd, allDay }) => {
-        const cal = ev.__cal;
-        const label = relativeDayLabel(evStart, evEnd, today);
-        const isToday = label === "today";
-        const timeText = allDay ? "All day" : formatTimeRange(evStart, evEnd);
-        const description = stripHtml(ev.description);
-        const rowStyle = isToday ? `background:${todayColor};` : "";
-        const textStyle = isToday ? `color:${todayTextColor};` : "";
-        const mutedStyle = isToday ? `color:${todayTextColor}; opacity:0.85;` : "";
 
-        const metaLines = [];
-        if (cfg.agenda_show_calendar) {
-          metaLines.push(this._escape(cal.name || cal.entity));
-        }
-        if (cfg.agenda_show_location && ev.location) {
-          metaLines.push(this._escape(ev.location));
-        }
-        if (cfg.agenda_show_description && description) {
-          metaLines.push(this._escape(description));
-        }
-        const metaHtml = metaLines
-          .map((line) => `<div class="agenda-meta" style="${mutedStyle}">${line}</div>`)
-          .join("");
-        const timeHtml = cfg.agenda_show_time
-          ? `<div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>`
-          : "";
+    // Renders one event row. `showDayLabel` is false in "group by day" mode,
+    // since the day is already said once by the group's own header there.
+    const renderRow = ({ ev, start: evStart, end: evEnd, allDay }, showDayLabel) => {
+      const cal = ev.__cal;
+      const label = relativeDayLabel(evStart, evEnd, today);
+      const isToday = label === "today";
+      const timeText = allDay ? "All day" : formatTimeRange(evStart, evEnd);
+      const description = stripHtml(ev.description);
+      const rowStyle = isToday ? `background:${todayColor};` : "";
+      const textStyle = isToday ? `color:${todayTextColor};` : "";
+      const mutedStyle = isToday ? `color:${todayTextColor}; opacity:0.85;` : "";
 
-        return `
-          <div class="agenda-item ${isToday ? "is-today" : ""}"
-               data-entity="${cal.entity}"
-               data-clickable="${this._config.tap_action !== "none"}"
-               style="${rowStyle}"
-               title="${this._escape(ev.summary || "(No title)")}">
-            <ha-icon icon="${cal.icon}" class="agenda-icon" style="color:${isToday ? todayTextColor : cal.color};"></ha-icon>
-            <div class="agenda-text">
-              <div class="agenda-title" style="${textStyle}">${this._escape(ev.summary || "(No title)")}</div>
-              ${metaHtml}
-              ${timeHtml}
-            </div>
-            <div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>
-          </div>`;
-      })
-      .join("");
+      const metaLines = [];
+      if (cfg.agenda_show_calendar) {
+        metaLines.push(this._escape(cal.name || cal.entity));
+      }
+      if (cfg.agenda_show_location && ev.location) {
+        metaLines.push(this._escape(ev.location));
+      }
+      if (cfg.agenda_show_description && description) {
+        metaLines.push(this._escape(description));
+      }
+      const metaHtml = metaLines
+        .map((line) => `<div class="agenda-meta" style="${mutedStyle}">${line}</div>`)
+        .join("");
+      const timeHtml = cfg.agenda_show_time
+        ? `<div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>`
+        : "";
+      const dayLabelHtml = showDayLabel
+        ? `<div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>`
+        : "";
+
+      return `
+        <div class="agenda-item ${isToday ? "is-today" : ""}"
+             data-entity="${cal.entity}"
+             data-clickable="${this._config.tap_action !== "none"}"
+             style="${rowStyle}"
+             title="${this._escape(ev.summary || "(No title)")}">
+          <ha-icon icon="${cal.icon}" class="agenda-icon" style="color:${isToday ? todayTextColor : cal.color};"></ha-icon>
+          <div class="agenda-text">
+            <div class="agenda-title" style="${textStyle}">${this._escape(ev.summary || "(No title)")}</div>
+            ${metaHtml}
+            ${timeHtml}
+          </div>
+          ${dayLabelHtml}
+        </div>`;
+    };
+
+    let listHtml;
+    if (cfg.agenda_grouping === "day") {
+      // Bucket events by the day they should appear under (an ongoing
+      // event that started earlier buckets under "today", same as its
+      // relative label would say).
+      const groups = new Map();
+      items.forEach((item) => {
+        const dayKey =
+          startOfDay(item.start) <= today && item.end > today ? today : startOfDay(item.start);
+        const key = dayKey.getTime();
+        if (!groups.has(key)) groups.set(key, { day: dayKey, items: [] });
+        groups.get(key).items.push(item);
+      });
+      listHtml = [...groups.values()]
+        .sort((a, b) => a.day - b.day)
+        .map(({ day, items: dayItems }) => {
+          const headerLabel = dayGroupLabel(day, today);
+          const rows = dayItems.map((item) => renderRow(item, false)).join("");
+          return `
+            <div class="agenda-day-group">
+              <div class="agenda-day-header">${this._escape(headerLabel)}</div>
+              ${rows}
+            </div>`;
+        })
+        .join("");
+    } else {
+      listHtml = items.map((item) => renderRow(item, true)).join("");
+    }
 
     const spacerHtml = this._config.agenda_align_spacer
       ? `<div class="weekday-row">&nbsp;</div>`
       : "";
 
-    return `${spacerHtml}<div class="agenda-list">${rowsHtml}</div>`;
+    return `${spacerHtml}<div class="agenda-list">${listHtml}</div>`;
   }
 
   _render() {
@@ -897,6 +948,19 @@ class HaMonthCalendarCard extends HTMLElement {
         padding-top: 2px;
         white-space: nowrap;
       }
+      .agenda-day-group:not(:first-child) {
+        margin-top: 6px;
+      }
+      .agenda-day-header {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--secondary-text-color);
+        padding: 6px 4px 4px;
+        border-bottom: 1px solid var(--divider-color, #e0e0e0);
+        margin-bottom: 2px;
+      }
       .agenda-empty {
         color: var(--secondary-text-color);
         font-style: italic;
@@ -1165,6 +1229,15 @@ class HaMonthCalendarCardEditor extends HTMLElement {
           </label>
         </div>
         <div class="row-2">
+          <label class="field">
+            <span class="field-label">Group by</span>
+            <select id="agenda-grouping">
+              <option value="event" ${c.agenda_grouping === "event" ? "selected" : ""}>Event (each event its own row)</option>
+              <option value="day" ${c.agenda_grouping === "day" ? "selected" : ""}>Day (events grouped under a day header)</option>
+            </select>
+          </label>
+        </div>
+        <div class="row-2">
           <label class="field field-checkbox">
             <input id="agenda-show-calendar" type="checkbox" ${c.agenda_show_calendar ? "checked" : ""} />
             <span class="field-label">Show calendar name</span>
@@ -1337,6 +1410,13 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     if (agendaTodayColor) {
       agendaTodayColor.addEventListener("input", (e) => {
         this._updateTopLevel("agenda_today_color", e.target.value);
+      });
+    }
+
+    const agendaGrouping = root.getElementById("agenda-grouping");
+    if (agendaGrouping) {
+      agendaGrouping.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_grouping", e.target.value === "day" ? "day" : "event");
       });
     }
 
