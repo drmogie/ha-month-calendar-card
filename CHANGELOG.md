@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026.09.14.3
+
+- Agenda view rows now have four independent show/hide toggles:
+  `agenda_show_calendar`, `agenda_show_time`, `agenda_show_location`,
+  `agenda_show_description` (all default `true` except description,
+  which defaults `false`). Each line only renders when its toggle is on
+  AND the event actually has that data. Descriptions have HTML tags
+  stripped and are truncated to one line, same as the other lines.
+- Confirmed/documented: your custom `title`, when set, is used as the
+  large header in the agenda view exactly as it already was in the
+  month grid (with the auto-generated "Next N days" text moving to a
+  smaller subtitle underneath) — this was already shared code, no
+  behavior change needed there.
+- GUI editor: added the four new checkboxes to the Agenda-view-only
+  section (still hidden entirely when Month grid is selected).
+
 ## 2026.09.14.2
 
 - Added a second card-wide view: **Agenda / upcoming list** — a

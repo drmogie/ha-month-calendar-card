@@ -7,10 +7,12 @@
  *     tracks "now" and rolls over automatically.
  *   - Agenda / upcoming list: a flat, scrollable list of upcoming events
  *     over an adjustable number of days ahead, each row showing the
- *     event's calendar icon, title, location (falling back to the
- *     calendar's display name), time range, and a relative day label
- *     ("today" / "tomorrow" / "in N days"). Today's events get a
- *     configurable highlight background color.
+ *     event's calendar icon, title, and a relative day label ("today" /
+ *     "tomorrow" / "in N days"). The calendar name, time, location, and
+ *     description lines can each be independently shown or hidden.
+ *     Today's events get a configurable highlight background color. Your
+ *     custom title (if set) is used as the header in this view too, the
+ *     same as in the month grid.
  *   - Lets you add one or more `calendar.*` entities, each with its own
  *     icon and color.
  *   - Lets you set the first day of the week (month view) and control
@@ -50,6 +52,10 @@
  * max_events_per_day: 3           # month view only, defaults to 3
  * agenda_days: 14                 # agenda view only, defaults to 14
  * agenda_today_color: '#ffca28'   # agenda view only, defaults to '#ffca28'
+ * agenda_show_calendar: true      # agenda view only, defaults to true
+ * agenda_show_time: true          # agenda view only, defaults to true
+ * agenda_show_location: true      # agenda view only, defaults to true
+ * agenda_show_description: false  # agenda view only, defaults to false
  * calendars:
  *   - entity: calendar.personal
  *     name: Personal
@@ -139,6 +145,16 @@ function formatTimeRange(start, end) {
   return `${start.toLocaleTimeString(undefined, fmt)} – ${end.toLocaleTimeString(undefined, fmt)}`;
 }
 
+// Calendar event descriptions sometimes carry raw HTML — strip tags and
+// collapse whitespace so a description renders as plain single-line text.
+function stripHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function contrastTextColor(hex) {
   if (!hex) return "#ffffff";
   let c = hex.replace("#", "");
@@ -184,6 +200,10 @@ function normalizeConfig(config) {
         ? config.agenda_days
         : DEFAULT_AGENDA_DAYS,
     agenda_today_color: config.agenda_today_color || DEFAULT_TODAY_COLOR,
+    agenda_show_calendar: config.agenda_show_calendar !== false,
+    agenda_show_time: config.agenda_show_time !== false,
+    agenda_show_location: config.agenda_show_location !== false,
+    agenda_show_description: config.agenda_show_description === true,
     calendars: Array.isArray(config.calendars)
       ? config.calendars.map((c) => ({
           entity: c.entity || "",
@@ -289,6 +309,10 @@ class HaMonthCalendarCard extends HTMLElement {
       event_display: "list",
       agenda_days: DEFAULT_AGENDA_DAYS,
       agenda_today_color: DEFAULT_TODAY_COLOR,
+      agenda_show_calendar: true,
+      agenda_show_time: true,
+      agenda_show_location: true,
+      agenda_show_description: false,
       calendars: first
         ? [{ entity: first, name: first, color: DEFAULT_COLOR, icon: DEFAULT_ICON }]
         : [{ entity: "calendar.personal", name: "Personal", color: DEFAULT_COLOR, icon: DEFAULT_ICON }],
@@ -544,16 +568,34 @@ class HaMonthCalendarCard extends HTMLElement {
       return `<div class="agenda-empty">No upcoming events.</div>`;
     }
 
+    const cfg = this._config;
     const rowsHtml = items
       .map(({ ev, start: evStart, end: evEnd, allDay }) => {
         const cal = ev.__cal;
         const label = relativeDayLabel(evStart, evEnd, today);
         const isToday = label === "today";
-        const subtitle = ev.location || cal.name || cal.entity;
         const timeText = allDay ? "All day" : formatTimeRange(evStart, evEnd);
+        const description = stripHtml(ev.description);
         const rowStyle = isToday ? `background:${todayColor};` : "";
         const textStyle = isToday ? `color:${todayTextColor};` : "";
         const mutedStyle = isToday ? `color:${todayTextColor}; opacity:0.85;` : "";
+
+        const metaLines = [];
+        if (cfg.agenda_show_calendar) {
+          metaLines.push(this._escape(cal.name || cal.entity));
+        }
+        if (cfg.agenda_show_location && ev.location) {
+          metaLines.push(this._escape(ev.location));
+        }
+        if (cfg.agenda_show_description && description) {
+          metaLines.push(this._escape(description));
+        }
+        const metaHtml = metaLines
+          .map((line) => `<div class="agenda-meta" style="${mutedStyle}">${line}</div>`)
+          .join("");
+        const timeHtml = cfg.agenda_show_time
+          ? `<div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>`
+          : "";
 
         return `
           <div class="agenda-item ${isToday ? "is-today" : ""}"
@@ -564,8 +606,8 @@ class HaMonthCalendarCard extends HTMLElement {
             <ha-icon icon="${cal.icon}" class="agenda-icon" style="color:${isToday ? todayTextColor : cal.color};"></ha-icon>
             <div class="agenda-text">
               <div class="agenda-title" style="${textStyle}">${this._escape(ev.summary || "(No title)")}</div>
-              ${subtitle ? `<div class="agenda-subtitle" style="${mutedStyle}">${this._escape(subtitle)}</div>` : ""}
-              <div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>
+              ${metaHtml}
+              ${timeHtml}
             </div>
             <div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>
           </div>`;
@@ -816,7 +858,7 @@ class HaMonthCalendarCard extends HTMLElement {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .agenda-subtitle {
+      .agenda-meta {
         font-size: 0.8rem;
         color: var(--secondary-text-color);
         overflow: hidden;
@@ -1102,6 +1144,26 @@ class HaMonthCalendarCardEditor extends HTMLElement {
             <span class="field-label">Today highlight color</span>
             <input id="agenda-today-color" type="color" value="${this._normalizeColorForInput(c.agenda_today_color)}" />
           </label>
+        </div>
+        <div class="row-2">
+          <label class="field field-checkbox">
+            <input id="agenda-show-calendar" type="checkbox" ${c.agenda_show_calendar ? "checked" : ""} />
+            <span class="field-label">Show calendar name</span>
+          </label>
+          <label class="field field-checkbox">
+            <input id="agenda-show-time" type="checkbox" ${c.agenda_show_time ? "checked" : ""} />
+            <span class="field-label">Show time</span>
+          </label>
+        </div>
+        <div class="row-2">
+          <label class="field field-checkbox">
+            <input id="agenda-show-location" type="checkbox" ${c.agenda_show_location ? "checked" : ""} />
+            <span class="field-label">Show location</span>
+          </label>
+          <label class="field field-checkbox">
+            <input id="agenda-show-description" type="checkbox" ${c.agenda_show_description ? "checked" : ""} />
+            <span class="field-label">Show description</span>
+          </label>
         </div>`
       : `
         <div class="row-2">
@@ -1240,6 +1302,34 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     if (agendaTodayColor) {
       agendaTodayColor.addEventListener("input", (e) => {
         this._updateTopLevel("agenda_today_color", e.target.value);
+      });
+    }
+
+    const agendaShowCalendar = root.getElementById("agenda-show-calendar");
+    if (agendaShowCalendar) {
+      agendaShowCalendar.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_show_calendar", e.target.checked);
+      });
+    }
+
+    const agendaShowTime = root.getElementById("agenda-show-time");
+    if (agendaShowTime) {
+      agendaShowTime.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_show_time", e.target.checked);
+      });
+    }
+
+    const agendaShowLocation = root.getElementById("agenda-show-location");
+    if (agendaShowLocation) {
+      agendaShowLocation.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_show_location", e.target.checked);
+      });
+    }
+
+    const agendaShowDescription = root.getElementById("agenda-show-description");
+    if (agendaShowDescription) {
+      agendaShowDescription.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_show_description", e.target.checked);
       });
     }
 

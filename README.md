@@ -9,9 +9,11 @@ A view-only Lovelace calendar card with two card-wide views:
   and rolls over automatically at midnight / month-end.
 - **Agenda / upcoming list** — a scrollable flat list of upcoming events
   over an adjustable number of days ahead, each row showing the event's
-  calendar icon, title, location (falling back to the calendar's display
-  name), time range, and a relative label ("today" / "tomorrow" / "in N
-  days"). Today's events get their own configurable highlight color.
+  calendar icon, title, and a relative label ("today" / "tomorrow" / "in
+  N days"). The calendar name, time, location, and description lines can
+  each be independently shown or hidden. Today's events get their own
+  configurable highlight color, and your custom title (if set) is used
+  as the header here too, same as in the month grid.
 - Add **any number of `calendar.*` entities**, each with its own **icon**
   and **color**.
 - **Two event display modes in the month grid**: a full list of event
@@ -76,8 +78,10 @@ get a form where you can:
   - **Month grid**: first day of week, full event list vs. compact
     icon-only display, and how many items show per day before
     collapsing to "+N more".
-  - **Agenda / upcoming list**: how many days ahead to show, and a color
-    picker for today's highlight background.
+  - **Agenda / upcoming list**: how many days ahead to show, a color
+    picker for today's highlight background, and four checkboxes to
+    show/hide the calendar name, time, location, and description on
+    each event row.
 - Add/remove calendars. Each calendar starts as a collapsed row showing
   just its icon, color, and name — click the chevron to expand it and
   edit the entity, display name, icon, and color. A newly-added calendar
@@ -106,6 +110,10 @@ event_display: list             # month view only: list | icon
 max_events_per_day: 3           # month view only, default 3
 agenda_days: 14                 # agenda view only, default 14
 agenda_today_color: '#ffca28'   # agenda view only, default '#ffca28'
+agenda_show_calendar: true      # agenda view only, default true
+agenda_show_time: true          # agenda view only, default true
+agenda_show_location: true      # agenda view only, default true
+agenda_show_description: false  # agenda view only, default false
 calendars:
   - entity: calendar.personal
     name: Personal
@@ -127,7 +135,7 @@ calendars:
 |------------------------|----------|------------------|------------------------------------------------------------------------|
 | `calendars`            | yes      | —                | List of calendar entries, each needs `entity`.                        |
 | `calendars[].entity`   | yes      | —                | A `calendar.*` entity id.                                              |
-| `calendars[].name`     | no       | entity id        | Shown in the legend and as an agenda-item's fallback subtitle.         |
+| `calendars[].name`     | no       | entity id        | Shown in the legend and as an agenda row's calendar-name line.         |
 | `calendars[].color`    | no       | `#03a9f4`        | Any CSS color; used for the event chip / icon color and legend swatch. |
 | `calendars[].icon`     | no       | `mdi:calendar`   | Any `mdi:` icon; shown on each event chip/agenda row and in the legend.|
 | `view`                 | no       | `month`          | `month` shows the month grid; `agenda` shows a scrollable upcoming-events list. |
@@ -140,6 +148,10 @@ calendars:
 | `max_events_per_day`   | no       | `3`              | **Month view only.** How many items (event chips, or calendar icons in icon mode) show before collapsing to "+N more". |
 | `agenda_days`          | no       | `14`             | **Agenda view only.** How many days ahead (including today) to fetch and list events for. |
 | `agenda_today_color`   | no       | `#ffca28`        | **Agenda view only.** Background highlight color for events happening today; text color is chosen automatically for readability. |
+| `agenda_show_calendar` | no       | `true`           | **Agenda view only.** Show each event's calendar display name as a line under the title. |
+| `agenda_show_time`     | no       | `true`           | **Agenda view only.** Show the time range (or "All day") under the title. |
+| `agenda_show_location` | no       | `true`           | **Agenda view only.** Show the event's location, when the calendar provides one. |
+| `agenda_show_description` | no    | `false`          | **Agenda view only.** Show the event's description (HTML tags stripped), when the calendar provides one. Off by default since descriptions can be long. |
 
 ## Notes on behavior
 
@@ -188,9 +200,19 @@ calendars:
   way (started before today but still ongoing) is labeled "today".
 - Colors are used as the event chip / icon color (and the month grid's
   icon-mode chip background); text color (black/white) is chosen
-  automatically for readability against your chosen color. In the
-  agenda view, an event's location is shown as its subtitle when the
-  calendar provides one, falling back to the calendar's display name.
+  automatically for readability against your chosen color.
+- **Agenda row content is independently configurable.** Each event row
+  can show or hide its calendar name, time, location, and description
+  lines separately (`agenda_show_*` options) — a line is only shown when
+  both its toggle is on AND the underlying data exists (e.g. an event
+  with no location never shows a blank location line, even with
+  `agenda_show_location: true`). Descriptions have any HTML stripped
+  before display and are truncated to one line with an ellipsis, same as
+  the other lines.
+- **Your title is the header in both views.** If you set `title`, it
+  becomes the large header text and the auto-generated month/year (or
+  "Next N days") text moves to a smaller subtitle line underneath — the
+  same behavior in the month grid and the agenda view.
 
 ## Troubleshooting
 
