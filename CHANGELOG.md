@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026.09.14.4
+
+- Fixed: a title made of only spaces (e.g. typed then "cleared" with a
+  space left behind) was treated as a set title, leaving the header
+  blank while the auto-generated text incorrectly stayed demoted to the
+  small subtitle. Title text is now trimmed before this check, so a
+  blank/space-only title correctly falls back to the big auto-generated
+  header.
+- Added `show_title`: hides the header's title TEXT only, while still
+  reserving its row height via `header_font_size` — for when you want
+  the sizing/spacing without a visible label. Editor: new "Show title
+  text" checkbox.
+- Added `agenda_align_spacer` (agenda view only): adds an invisible
+  spacer the height of the month grid's weekday-header row above the
+  event list, so events line up with the month grid's day-of-week row
+  when both views are placed side by side. Editor: new "Align top with
+  month grid" checkbox in the Agenda-view-only section.
+
 ## 2026.09.14.3
 
 - Agenda view rows now have four independent show/hide toggles:

@@ -13,7 +13,13 @@ A view-only Lovelace calendar card with two card-wide views:
   N days"). The calendar name, time, location, and description lines can
   each be independently shown or hidden. Today's events get their own
   configurable highlight color, and your custom title (if set) is used
-  as the header here too, same as in the month grid.
+  as the header here too, same as in the month grid. An optional spacer
+  can align its first row with the month grid's weekday header, for
+  placing both views side by side.
+- **Hide the title text while keeping the header size.** `show_title:
+  false` hides the header's text but keeps its reserved space, so
+  `header_font_size` still controls the row height — handy if you just
+  want the sizing without a visible label.
 - Add **any number of `calendar.*` entities**, each with its own **icon**
   and **color**.
 - **Two event display modes in the month grid**: a full list of event
@@ -101,6 +107,8 @@ Add a card, choose **Manual**, and paste something like:
 type: custom:ha-month-calendar-card
 view: month                     # optional — month | agenda, defaults to "month"
 title: Family Calendar          # optional — defaults to "Month Year" / "Next N days"
+show_title: true                # optional, default true — false hides the title TEXT
+                                 # only; header_font_size still reserves its space
 header_font_size: 20            # optional, px, defaults to 20
 tap_action: more-info           # more-info | none
 show_legend: true               # optional, default true
@@ -114,6 +122,9 @@ agenda_show_calendar: true      # agenda view only, default true
 agenda_show_time: true          # agenda view only, default true
 agenda_show_location: true      # agenda view only, default true
 agenda_show_description: false  # agenda view only, default false
+agenda_align_spacer: false      # agenda view only, default false — adds a spacer the
+                                 # height of the month grid's weekday row, so events
+                                 # line up with it when both views sit side by side
 calendars:
   - entity: calendar.personal
     name: Personal
@@ -140,6 +151,7 @@ calendars:
 | `calendars[].icon`     | no       | `mdi:calendar`   | Any `mdi:` icon; shown on each event chip/agenda row and in the legend.|
 | `view`                 | no       | `month`          | `month` shows the month grid; `agenda` shows a scrollable upcoming-events list. |
 | `title`                | no       | current month/yr | Card title text.                                                       |
+| `show_title`           | no       | `true`           | Set `false` to hide the title TEXT only; the header row's height (via `header_font_size`) is still reserved, so the layout doesn't shift. |
 | `header_font_size`     | no       | `20`             | Font size (px) of the header text (month/year, or your custom title).  |
 | `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `none` disables clicking. Applies to both views — this card never creates or edits events. |
 | `show_legend`          | no       | `true`           | Toggles the calendar name/color/icon legend under the grid/list.       |
@@ -152,6 +164,7 @@ calendars:
 | `agenda_show_time`     | no       | `true`           | **Agenda view only.** Show the time range (or "All day") under the title. |
 | `agenda_show_location` | no       | `true`           | **Agenda view only.** Show the event's location, when the calendar provides one. |
 | `agenda_show_description` | no    | `false`          | **Agenda view only.** Show the event's description (HTML tags stripped), when the calendar provides one. Off by default since descriptions can be long. |
+| `agenda_align_spacer`  | no       | `false`          | **Agenda view only.** Adds an invisible spacer the height of the month grid's weekday-header row above the event list, so the two views' rows line up when placed side by side. |
 
 ## Notes on behavior
 
@@ -212,7 +225,20 @@ calendars:
 - **Your title is the header in both views.** If you set `title`, it
   becomes the large header text and the auto-generated month/year (or
   "Next N days") text moves to a smaller subtitle line underneath — the
-  same behavior in the month grid and the agenda view.
+  same behavior in the month grid and the agenda view. A title made of
+  only spaces is treated as blank (trimmed), so it correctly falls back
+  to the auto-generated text instead of leaving an invisible "set"
+  title behind.
+- **Hiding the title keeps its space.** `show_title: false` hides the
+  header's text but not its row — `header_font_size` still reserves the
+  same height, so you can use the header purely for vertical spacing
+  without a visible label.
+- **Aligning Month grid and Agenda side by side.** The month grid always
+  starts with a weekday-header row before its first day cell; the
+  agenda view doesn't have one by default. Turn on
+  `agenda_align_spacer` in the agenda view to add a matching blank
+  spacer row so the first event lines up with the month grid's first
+  row of days when the two cards sit next to each other.
 
 ## Troubleshooting
 

@@ -43,6 +43,8 @@
  * type: custom:ha-month-calendar-card
  * view: month                     # month | agenda, defaults to "month"
  * title: Family Calendar          # optional, defaults to "Month Year" / "Next N days"
+ * show_title: true                # optional, defaults to true — false hides the title
+ *                                  # TEXT only; header_font_size still reserves its space
  * header_font_size: 20            # optional, px, defaults to 20
  * tap_action: more-info           # more-info | none
  * show_legend: true               # optional, defaults to true
@@ -56,6 +58,9 @@
  * agenda_show_time: true          # agenda view only, defaults to true
  * agenda_show_location: true      # agenda view only, defaults to true
  * agenda_show_description: false  # agenda view only, defaults to false
+ * agenda_align_spacer: false      # agenda view only, defaults to false — adds a
+ *                                  # spacer the height of the month grid's weekday
+ *                                  # row, so events line up with it side-by-side
  * calendars:
  *   - entity: calendar.personal
  *     name: Personal
@@ -182,7 +187,8 @@ function normalizeConfig(config) {
     ...config,
     type: "custom:ha-month-calendar-card",
     view: config.view === "agenda" ? "agenda" : "month",
-    title: config.title || "",
+    title: (config.title || "").trim(),
+    show_title: config.show_title !== false,
     header_font_size:
       Number.isFinite(config.header_font_size) && config.header_font_size > 0
         ? config.header_font_size
@@ -190,6 +196,7 @@ function normalizeConfig(config) {
     first_day_of_week: config.first_day_of_week || "sunday",
     tap_action: config.tap_action === "none" ? "none" : "more-info",
     show_legend: config.show_legend !== false,
+    agenda_align_spacer: config.agenda_align_spacer === true,
     event_display: config.event_display === "icon" ? "icon" : "list",
     max_events_per_day:
       Number.isInteger(config.max_events_per_day) && config.max_events_per_day > 0
@@ -313,6 +320,8 @@ class HaMonthCalendarCard extends HTMLElement {
       agenda_show_time: true,
       agenda_show_location: true,
       agenda_show_description: false,
+      agenda_align_spacer: false,
+      show_title: true,
       calendars: first
         ? [{ entity: first, name: first, color: DEFAULT_COLOR, icon: DEFAULT_ICON }]
         : [{ entity: "calendar.personal", name: "Personal", color: DEFAULT_COLOR, icon: DEFAULT_ICON }],
@@ -614,7 +623,11 @@ class HaMonthCalendarCard extends HTMLElement {
       })
       .join("");
 
-    return `<div class="agenda-list">${rowsHtml}</div>`;
+    const spacerHtml = this._config.agenda_align_spacer
+      ? `<div class="weekday-row">&nbsp;</div>`
+      : "";
+
+    return `${spacerHtml}<div class="agenda-list">${rowsHtml}</div>`;
   }
 
   _render() {
@@ -625,6 +638,7 @@ class HaMonthCalendarCard extends HTMLElement {
     const subtitleSize = Math.max(12, Math.round(headerSize * 0.7));
     const contextLabel = this._contextLabel();
     const bodyHtml = isAgenda ? this._renderAgendaBody() : this._renderMonthBody();
+    const showTitle = this._config.show_title !== false;
 
     const legendHtml = this._config.show_legend
       ? `<div class="legend">
@@ -640,13 +654,18 @@ class HaMonthCalendarCard extends HTMLElement {
         </div>`
       : "";
 
+    // When "show title" is off, the header text is hidden with
+    // visibility:hidden (not removed) so the title's box — sized by
+    // header_font_size — still reserves its vertical space. That's what
+    // lets header_font_size stay a meaningful, adjustable setting even
+    // with the text hidden.
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
       <ha-card>
-        <div class="card-header">
+        <div class="card-header" ${showTitle ? "" : 'style="visibility:hidden;"'}>
           <div class="title" style="font-size:${headerSize}px;">${this._escape(this._config.title || contextLabel)}</div>
         </div>
-        ${!this._config.title ? "" : `<div class="subtitle" style="font-size:${subtitleSize}px;">${this._escape(contextLabel)}</div>`}
+        ${showTitle && this._config.title ? `<div class="subtitle" style="font-size:${subtitleSize}px;">${this._escape(contextLabel)}</div>` : ""}
         <div class="status-line" style="display:${this._loading || this._error ? "block" : "none"}">
           ${this._escape(this._loading ? "Loading events…" : this._error || "")}
         </div>
@@ -1164,6 +1183,12 @@ class HaMonthCalendarCardEditor extends HTMLElement {
             <input id="agenda-show-description" type="checkbox" ${c.agenda_show_description ? "checked" : ""} />
             <span class="field-label">Show description</span>
           </label>
+        </div>
+        <div class="row-2">
+          <label class="field field-checkbox">
+            <input id="agenda-align-spacer" type="checkbox" ${c.agenda_align_spacer ? "checked" : ""} />
+            <span class="field-label">Align top with month grid (adds a spacer the height of the weekday row)</span>
+          </label>
         </div>`
       : `
         <div class="row-2">
@@ -1218,6 +1243,12 @@ class HaMonthCalendarCardEditor extends HTMLElement {
               <input id="header-size" type="number" min="10" max="60" value="${c.header_font_size}" />
             </label>
             <label class="field field-checkbox">
+              <input id="show-title" type="checkbox" ${c.show_title ? "checked" : ""} />
+              <span class="field-label">Show title text</span>
+            </label>
+          </div>
+          <div class="row-2">
+            <label class="field field-checkbox">
               <input id="show-legend" type="checkbox" ${c.show_legend ? "checked" : ""} />
               <span class="field-label">Show calendar legend</span>
             </label>
@@ -1266,6 +1297,10 @@ class HaMonthCalendarCardEditor extends HTMLElement {
 
     root.getElementById("show-legend").addEventListener("change", (e) => {
       this._updateTopLevel("show_legend", e.target.checked);
+    });
+
+    root.getElementById("show-title").addEventListener("change", (e) => {
+      this._updateTopLevel("show_title", e.target.checked);
     });
 
     const firstDay = root.getElementById("first-day");
@@ -1330,6 +1365,13 @@ class HaMonthCalendarCardEditor extends HTMLElement {
     if (agendaShowDescription) {
       agendaShowDescription.addEventListener("change", (e) => {
         this._updateTopLevel("agenda_show_description", e.target.checked);
+      });
+    }
+
+    const agendaAlignSpacer = root.getElementById("agenda-align-spacer");
+    if (agendaAlignSpacer) {
+      agendaAlignSpacer.addEventListener("change", (e) => {
+        this._updateTopLevel("agenda_align_spacer", e.target.checked);
       });
     }
 
