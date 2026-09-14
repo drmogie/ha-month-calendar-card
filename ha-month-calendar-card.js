@@ -19,10 +19,11 @@
  *     icon and color.
  *   - Lets you set the first day of the week (month view) and control
  *     the header text size.
- *   - Lets you choose, card-wide, whether clicking an event opens Home
- *     Assistant's built-in "more info" dialog for that calendar, or does
- *     nothing at all. This card is view-only — it never creates or
- *     edits calendar events.
+ *   - Lets you choose, card-wide, what clicking an event does: open Home
+ *     Assistant's built-in "more info" dialog for that calendar, show an
+ *     in-card popup with that specific event's own title/time/location/
+ *     description, or do nothing at all. This card is view-only — it
+ *     never creates or edits calendar events.
  *   - Works in the Lovelace "Sections" view (declares default grid
  *     sizing via getLayoutOptions) as well as classic Masonry views.
  *   - Ships a full visual (GUI) editor — no YAML required — including a
@@ -48,7 +49,10 @@
  * show_title: true                # optional, defaults to true — false hides the title
  *                                  # TEXT only; header_font_size still reserves its space
  * header_font_size: 20            # optional, px, defaults to 20
- * tap_action: more-info           # more-info | none
+ * tap_action: more-info           # more-info | event-details | none — "event-details"
+ *                                  # shows an in-card popup with that event's own
+ *                                  # title/time/location/description instead of HA's
+ *                                  # more-info dialog for the whole calendar entity
  * show_legend: true               # optional, defaults to true
  * first_day_of_week: monday       # month view only: sunday | monday | tuesday
  *                                  # wednesday | thursday | friday | saturday
@@ -212,7 +216,10 @@ function normalizeConfig(config) {
         ? config.header_font_size
         : DEFAULT_HEADER_SIZE,
     first_day_of_week: config.first_day_of_week || "sunday",
-    tap_action: config.tap_action === "none" ? "none" : "more-info",
+    tap_action:
+      config.tap_action === "none" || config.tap_action === "event-details"
+        ? config.tap_action
+        : "more-info",
     show_legend: config.show_legend !== false,
     agenda_align_spacer: config.agenda_align_spacer === true,
     agenda_grouping: config.agenda_grouping === "day" ? "day" : "event",
@@ -258,6 +265,8 @@ class HaMonthCalendarCard extends HTMLElement {
     this._loading = false;
     this._error = null;
     this._refreshTimer = null;
+    this._eventIndex = []; // detail-entry data for each clickable rendered this pass
+    this._detailEntry = null; // currently-open event-details popup data, if any
   }
 
   setConfig(config) {
@@ -448,14 +457,54 @@ class HaMonthCalendarCard extends HTMLElement {
 
   // ---- interaction --------------------------------------------------------
 
-  _onEventClick(entityId) {
+  // Builds the plain-data object the event-details popup renders from —
+  // computed once at render time so the popup doesn't need to re-parse
+  // the raw HA event later (by which point the underlying event list may
+  // have already refreshed).
+  _buildDetailEntry(ev) {
+    const s = parseEventBoundary(ev.start);
+    let e = parseEventBoundary(ev.end);
+    if (!e && s) e = new Date(s.getTime() + DAY_MS);
+    const allDay = isAllDay(ev);
+    const timeText = s && e ? (allDay ? "All day" : formatTimeRange(s, e)) : "";
+    return {
+      title: ev.summary || "(No title)",
+      calName: (ev.__cal && (ev.__cal.name || ev.__cal.entity)) || "",
+      calIcon: (ev.__cal && ev.__cal.icon) || DEFAULT_ICON,
+      calColor: (ev.__cal && ev.__cal.color) || DEFAULT_COLOR,
+      timeText,
+      location: ev.location || "",
+      description: stripHtml(ev.description),
+    };
+  }
+
+  _onEventClick(el) {
     if (!this._config || this._config.tap_action === "none") return;
+    if (this._config.tap_action === "event-details") {
+      const idx = parseInt(el.dataset.eventIndex, 10);
+      const entry = Number.isInteger(idx) ? this._eventIndex[idx] : null;
+      if (entry) {
+        this._showEventDetail(entry);
+        return;
+      }
+      // Fall through to more-info if we somehow don't have detail data.
+    }
     const evt = new CustomEvent("hass-more-info", {
       bubbles: true,
       composed: true,
-      detail: { entityId },
+      detail: { entityId: el.dataset.entity },
     });
     this.dispatchEvent(evt);
+  }
+
+  _showEventDetail(entry) {
+    this._detailEntry = entry;
+    this._render();
+  }
+
+  _closeEventDetail() {
+    this._detailEntry = null;
+    this._render();
   }
 
   // ---- rendering ----------------------------------------------------------
@@ -519,20 +568,23 @@ class HaMonthCalendarCard extends HTMLElement {
         dayEvents.forEach((ev) => {
           const cal = ev.__cal;
           if (!byCalendar.has(cal.entity)) {
-            byCalendar.set(cal.entity, { cal, titles: [] });
+            byCalendar.set(cal.entity, { cal, titles: [], events: [] });
           }
           byCalendar.get(cal.entity).titles.push(ev.summary || "(No title)");
+          byCalendar.get(cal.entity).events.push(ev);
         });
         displayItems = Array.from(byCalendar.values()).map((v) => ({
           cal: v.cal,
           tooltip: v.titles.join("\n"),
           text: null,
+          events: v.events,
         }));
       } else {
         displayItems = dayEvents.map((ev) => ({
           cal: ev.__cal,
           tooltip: ev.summary || "(No title)",
           text: ev.summary || "(No title)",
+          events: [ev],
         }));
       }
 
@@ -541,10 +593,18 @@ class HaMonthCalendarCard extends HTMLElement {
       shown.forEach((item) => {
         const cal = item.cal;
         const textColor = contrastTextColor(cal.color);
+        // A list-mode chip is always a single event; an icon-mode chip can
+        // represent several events for the same calendar/day, so the
+        // details popup shows all of them stacked.
+        const detailIdx =
+          item.events.length === 1
+            ? this._eventIndex.push(this._buildDetailEntry(item.events[0])) - 1
+            : this._eventIndex.push({ multiple: item.events.map((ev) => this._buildDetailEntry(ev)) }) - 1;
         if (iconMode) {
           chipsHtml += `
             <div class="event-chip icon-only"
                  data-entity="${cal.entity}"
+                 data-event-index="${detailIdx}"
                  data-clickable="${this._config.tap_action !== "none"}"
                  title="${this._escape(item.tooltip)}"
                  style="background:${cal.color};">
@@ -554,6 +614,7 @@ class HaMonthCalendarCard extends HTMLElement {
           chipsHtml += `
             <div class="event-chip"
                  data-entity="${cal.entity}"
+                 data-event-index="${detailIdx}"
                  data-clickable="${this._config.tap_action !== "none"}"
                  title="${this._escape(item.tooltip)}"
                  style="background:${cal.color};color:${textColor};">
@@ -660,9 +721,12 @@ class HaMonthCalendarCard extends HTMLElement {
         ? `<div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>`
         : "";
 
+      const detailIdx = this._eventIndex.push(this._buildDetailEntry(ev)) - 1;
+
       return `
         <div class="agenda-item ${isToday ? "is-today" : ""}"
              data-entity="${cal.entity}"
+             data-event-index="${detailIdx}"
              data-clickable="${this._config.tap_action !== "none"}"
              style="${rowStyle}"
              title="${this._escape(ev.summary || "(No title)")}">
@@ -719,6 +783,7 @@ class HaMonthCalendarCard extends HTMLElement {
     const headerSize = this._config.header_font_size || DEFAULT_HEADER_SIZE;
     const subtitleSize = Math.max(12, Math.round(headerSize * 0.7));
     const contextLabel = this._contextLabel();
+    this._eventIndex = []; // rebuilt fresh by _renderMonthBody/_renderAgendaBody below
     const bodyHtml = isAgenda ? this._renderAgendaBody() : this._renderMonthBody();
     const showTitle = this._config.show_title !== false;
 
@@ -753,6 +818,7 @@ class HaMonthCalendarCard extends HTMLElement {
         </div>
         <div class="card-body ${isAgenda ? "agenda-mode" : "month-mode"}">${bodyHtml}</div>
         ${legendHtml}
+        ${this._detailEntry ? this._renderDetailDialog(this._detailEntry) : ""}
       </ha-card>
     `;
 
@@ -760,12 +826,58 @@ class HaMonthCalendarCard extends HTMLElement {
       if (el.dataset.clickable === "true") {
         el.addEventListener("click", (e) => {
           e.stopPropagation();
-          this._onEventClick(el.dataset.entity);
+          this._onEventClick(el);
         });
       } else {
         el.classList.add("no-click");
       }
     });
+
+    if (this._detailEntry) {
+      const backdrop = this.shadowRoot.querySelector(".detail-backdrop");
+      const closeBtn = this.shadowRoot.querySelector(".detail-close");
+      if (backdrop) {
+        backdrop.addEventListener("click", (e) => {
+          if (e.target === backdrop) this._closeEventDetail();
+        });
+      }
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => this._closeEventDetail());
+      }
+    }
+  }
+
+  // Renders the "event details" popup shown when tap_action is
+  // "event-details" — either one event's details, or (for a month-grid
+  // icon-mode chip representing several same-day events on one calendar)
+  // each of them stacked with a divider between.
+  _renderDetailDialog(entry) {
+    const blocksHtml = entry.multiple
+      ? entry.multiple.map((e) => this._renderDetailBlock(e)).join('<div class="detail-divider"></div>')
+      : this._renderDetailBlock(entry);
+    return `
+      <div class="detail-backdrop">
+        <div class="detail-dialog">
+          <button class="detail-close" type="button" aria-label="Close">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+          ${blocksHtml}
+        </div>
+      </div>`;
+  }
+
+  _renderDetailBlock(e) {
+    return `
+      <div class="detail-block">
+        <div class="detail-title-row">
+          <ha-icon icon="${e.calIcon}" style="color:${e.calColor};"></ha-icon>
+          <span class="detail-title">${this._escape(e.title)}</span>
+        </div>
+        ${e.calName ? `<div class="detail-line">${this._escape(e.calName)}</div>` : ""}
+        ${e.timeText ? `<div class="detail-line">${this._escape(e.timeText)}</div>` : ""}
+        ${e.location ? `<div class="detail-line">${this._escape(e.location)}</div>` : ""}
+        ${e.description ? `<div class="detail-line detail-description">${this._escape(e.description)}</div>` : ""}
+      </div>`;
   }
 
   _escape(str) {
@@ -787,6 +899,7 @@ class HaMonthCalendarCard extends HTMLElement {
         gap: 8px;
         height: 100%;
         box-sizing: border-box;
+        position: relative;
       }
       .card-header {
         display: flex;
@@ -1037,6 +1150,73 @@ class HaMonthCalendarCard extends HTMLElement {
       }
       .legend-item ha-icon {
         --mdc-icon-size: 16px;
+      }
+      .detail-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
+        z-index: 10;
+        border-radius: var(--ha-card-border-radius, 12px);
+      }
+      .detail-dialog {
+        position: relative;
+        background: var(--card-background-color, #fff);
+        color: var(--primary-text-color);
+        border-radius: 8px;
+        padding: 20px 20px 16px;
+        width: 320px;
+        max-width: 100%;
+        max-height: 100%;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+        box-sizing: border-box;
+      }
+      .detail-close {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--secondary-text-color);
+        padding: 6px;
+        line-height: 0;
+        border-radius: 50%;
+      }
+      .detail-close:hover {
+        background: var(--divider-color, rgba(0, 0, 0, 0.08));
+      }
+      .detail-divider {
+        height: 1px;
+        background: var(--divider-color, #e0e0e0);
+        margin: 14px 0;
+      }
+      .detail-title-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        padding-right: 20px;
+      }
+      .detail-title {
+        font-weight: 600;
+        font-size: 1.05rem;
+        color: var(--primary-text-color);
+      }
+      .detail-line {
+        font-size: 0.85rem;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .detail-description {
+        color: var(--primary-text-color);
       }
       @media (max-width: 450px) {
         .day-cell { padding: 2px; }
@@ -1370,6 +1550,7 @@ class HaMonthCalendarCardEditor extends HTMLElement {
               <span class="field-label">On event click</span>
               <select id="tap-action">
                 <option value="more-info" ${c.tap_action === "more-info" ? "selected" : ""}>Open more-info dialog</option>
+                <option value="event-details" ${c.tap_action === "event-details" ? "selected" : ""}>Show event details popup</option>
                 <option value="none" ${c.tap_action === "none" ? "selected" : ""}>Do nothing</option>
               </select>
             </label>

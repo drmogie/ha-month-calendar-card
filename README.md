@@ -32,10 +32,14 @@ A view-only Lovelace calendar card with two card-wide views:
 - Set the **first day of the week** to whichever day you like (Mon, Tue,
   Wed, Thu, Fri, Sat, or Sun) — month grid only.
 - Adjustable **header text size**.
-- One **card-wide tap setting**: clicking an event either opens Home
-  Assistant's built-in "more info" dialog for that calendar, or does
-  nothing (`tap_action: more-info` / `tap_action: none`). This card is
-  view-only — it never creates or edits calendar events.
+- One **card-wide tap setting**: clicking an event opens Home Assistant's
+  built-in "more info" dialog for that calendar, shows an **event details
+  popup** (a small in-card dialog with just that event's own title, time,
+  location, and description — often more useful than more-info, which
+  only knows about the whole calendar, not the specific event you
+  clicked), or does nothing (`tap_action: more-info` / `event-details` /
+  `none`). This card is view-only — it never creates or edits calendar
+  events.
 - A small color+icon legend under the grid/list (optional).
 - Full **visual (GUI) editor** — no YAML required, though YAML is still
   supported if you prefer it. The editor only shows the fields that
@@ -81,7 +85,7 @@ get a form where you can:
 
 - Set an optional title, pick the card **view** (Month grid or Agenda /
   upcoming list), and choose the click behavior for events (more-info
-  dialog or nothing).
+  dialog, an event details popup, or nothing).
 - Set the header text size in pixels and toggle the legend — the form
   below that only shows the fields for whichever view you picked:
   - **Month grid**: first day of week, full event list vs. compact
@@ -115,7 +119,7 @@ title: Family Calendar          # optional — defaults to "Month Year" / "Next 
 show_title: true                # optional, default true — false hides the title TEXT
                                  # only; header_font_size still reserves its space
 header_font_size: 20            # optional, px, defaults to 20
-tap_action: more-info           # more-info | none
+tap_action: more-info           # more-info | event-details | none
 show_legend: true               # optional, default true
 first_day_of_week: monday       # month view only: sunday | monday | tuesday
                                  # wednesday | thursday | friday | saturday
@@ -161,7 +165,7 @@ calendars:
 | `title`                | no       | current month/yr | Card title text.                                                       |
 | `show_title`           | no       | `true`           | Set `false` to hide the title TEXT only; the header row's height (via `header_font_size`) is still reserved, so the layout doesn't shift. |
 | `header_font_size`     | no       | `20`             | Font size (px) of the header text (month/year, or your custom title).  |
-| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `none` disables clicking. Applies to both views — this card never creates or edits events. |
+| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `event-details` opens an in-card popup showing just that event's own title, time, location, and description; `none` disables clicking. Applies to both views — this card never creates or edits events. |
 | `show_legend`          | no       | `true`           | Toggles the calendar name/color/icon legend under the grid/list.       |
 | `first_day_of_week`    | no       | `sunday`         | **Month view only.** `sunday`, `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`. |
 | `event_display`        | no       | `list`           | **Month view only.** `list` shows one chip per event with its title; `icon` collapses each calendar to a single icon per day, deduped even if that calendar has multiple events that day. |
@@ -213,11 +217,19 @@ calendars:
 - **`tap_action: more-info`** fires HA's standard `hass-more-info` event
   scoped to the event's calendar entity — the same dialog you'd get
   clicking that calendar entity elsewhere in the UI (shows its upcoming
-  agenda). Home Assistant calendar events themselves don't have their
-  own entity id, so this is the native "more info" surface available for
-  calendars. This card is view-only — it has no way to create or edit
-  events; you'll always end up at that same more-info dialog (or none,
-  with `tap_action: none`).
+  agenda, not the specific event you clicked). Home Assistant calendar
+  events themselves don't have their own entity id, so this is the
+  native "more info" surface available for calendars.
+- **`tap_action: event-details`** instead opens a small popup inside the
+  card itself, showing just the clicked event's own title, calendar
+  name, time, location, and description (each still only shown when the
+  data exists — same as the agenda row toggles, but always shown here
+  regardless of them, since this is a dedicated details view). Close it
+  with the × button or by clicking outside it. A month-grid icon-mode
+  chip that represents several same-day events for one calendar shows
+  all of them stacked in the popup, separated by a divider. This card is
+  view-only either way — it has no way to create or edit events;
+  `tap_action: none` disables clicking entirely.
 - All-day and timed events are both supported and correctly matched to
   the day(s)/rows they span. In the agenda view, an event already under
   way (started before today but still ongoing) is labeled "today".

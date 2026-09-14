@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.09.14.9
+
+- Added a new `tap_action: event-details` option: instead of opening
+  HA's more-info dialog for the whole calendar entity, clicking an
+  event opens a small popup inside the card itself showing just that
+  event's own title, calendar name, time, location, and description.
+  A month-grid icon-mode chip representing several same-day events for
+  one calendar shows all of them stacked in the popup with dividers
+  between. Close with the × button or by clicking outside the popup.
+  Editor: new "Show event details popup" choice in the "On event click"
+  dropdown. `more-info` stays the default; `none` is unchanged.
+
 ## 2026.09.14.8
 
 - Removed the divider line between individual event rows when
