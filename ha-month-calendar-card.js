@@ -1152,7 +1152,7 @@ class HaMonthCalendarCard extends HTMLElement {
         --mdc-icon-size: 16px;
       }
       .detail-backdrop {
-        position: absolute;
+        position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.5);
         display: flex;
@@ -1160,8 +1160,7 @@ class HaMonthCalendarCard extends HTMLElement {
         justify-content: center;
         padding: 16px;
         box-sizing: border-box;
-        z-index: 10;
-        border-radius: var(--ha-card-border-radius, 12px);
+        z-index: 1000;
       }
       .detail-dialog {
         position: relative;

@@ -165,7 +165,7 @@ calendars:
 | `title`                | no       | current month/yr | Card title text.                                                       |
 | `show_title`           | no       | `true`           | Set `false` to hide the title TEXT only; the header row's height (via `header_font_size`) is still reserved, so the layout doesn't shift. |
 | `header_font_size`     | no       | `20`             | Font size (px) of the header text (month/year, or your custom title).  |
-| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `event-details` opens an in-card popup showing just that event's own title, time, location, and description; `none` disables clicking. Applies to both views — this card never creates or edits events. |
+| `tap_action`           | no       | `more-info`      | `more-info` opens HA's more-info dialog for the event's calendar entity; `event-details` opens a popup centered over the screen showing just that event's own title, time, location, and description; `none` disables clicking. Applies to both views — this card never creates or edits events. |
 | `show_legend`          | no       | `true`           | Toggles the calendar name/color/icon legend under the grid/list.       |
 | `first_day_of_week`    | no       | `sunday`         | **Month view only.** `sunday`, `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`. |
 | `event_display`        | no       | `list`           | **Month view only.** `list` shows one chip per event with its title; `icon` collapses each calendar to a single icon per day, deduped even if that calendar has multiple events that day. |
@@ -220,16 +220,17 @@ calendars:
   agenda, not the specific event you clicked). Home Assistant calendar
   events themselves don't have their own entity id, so this is the
   native "more info" surface available for calendars.
-- **`tap_action: event-details`** instead opens a small popup inside the
-  card itself, showing just the clicked event's own title, calendar
-  name, time, location, and description (each still only shown when the
-  data exists — same as the agenda row toggles, but always shown here
-  regardless of them, since this is a dedicated details view). Close it
-  with the × button or by clicking outside it. A month-grid icon-mode
-  chip that represents several same-day events for one calendar shows
-  all of them stacked in the popup, separated by a divider. This card is
-  view-only either way — it has no way to create or edit events;
-  `tap_action: none` disables clicking entirely.
+- **`tap_action: event-details`** instead opens a small popup centered
+  over the whole screen (not just the card), showing just the clicked
+  event's own title, calendar name, time, location, and description
+  (each still only shown when the data exists — same as the agenda row
+  toggles, but always shown here regardless of them, since this is a
+  dedicated details view). Close it with the × button or by clicking
+  outside it. A month-grid icon-mode chip that represents several
+  same-day events for one calendar shows all of them stacked in the
+  popup, separated by a divider. This card is view-only either way — it
+  has no way to create or edit events; `tap_action: none` disables
+  clicking entirely.
 - All-day and timed events are both supported and correctly matched to
   the day(s)/rows they span. In the agenda view, an event already under
   way (started before today but still ongoing) is labeled "today".

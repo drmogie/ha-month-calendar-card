@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.09.14.10
+
+- Changed the `event-details` popup to center over the whole screen
+  (fixed positioning) instead of being confined inside the card's own
+  box — easier to read and reach, especially on a small card.
+
 ## 2026.09.14.9
 
 - Added a new `tap_action: event-details` option: instead of opening
