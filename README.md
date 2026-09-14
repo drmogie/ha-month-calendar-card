@@ -164,7 +164,7 @@ calendars:
 | `max_events_per_day`   | no       | `3`              | **Month view only.** How many items (event chips, or calendar icons in icon mode) show before collapsing to "+N more". |
 | `agenda_days`          | no       | `14`             | **Agenda view only.** How many days ahead (including today) to fetch and list events for. |
 | `agenda_today_color`   | no       | `#ffca28`        | **Agenda view only.** Background highlight color for events happening today; text color is chosen automatically for readability. |
-| `agenda_grouping`      | no       | `event`          | **Agenda view only.** `event` shows one row per event with its own relative day label; `day` groups events under a day header (Today / Tomorrow / Weekday, Mon D) shown once, with the label removed from each row underneath it. |
+| `agenda_grouping`      | no       | `event`          | **Agenda view only.** `event` shows one row per event with its own relative day label. `day` groups events under a day header (Today / Tomorrow / Weekday, Mon D) shown once, and changes each row's layout: calendar name at the left edge of line 2, time at the right edge of that same line, location on line 3, description on line 4. |
 | `agenda_show_calendar` | no       | `true`           | **Agenda view only.** Show each event's calendar display name as a line under the title. |
 | `agenda_show_time`     | no       | `true`           | **Agenda view only.** Show the time range (or "All day") under the title. |
 | `agenda_show_location` | no       | `true`           | **Agenda view only.** Show the event's location, when the calendar provides one. |
@@ -225,7 +225,11 @@ calendars:
   `agenda_grouping` to `day` to instead show the day once, as a header
   (Today / Tomorrow / a weekday-and-date for anything further out),
   with that day's events listed underneath and no repeated label per
-  row.
+  row. In this mode each row's layout also changes to make room for the
+  day header: the calendar name sits at the left edge of line 2 and the
+  time sits at the right edge of that same line, with location on line 3
+  and description on line 4 (each still only shown when its own toggle
+  is on and the data exists).
 - **Agenda row content is independently configurable.** Each event row
   can show or hide its calendar name, time, location, and description
   lines separately (`agenda_show_*` options) — a line is only shown when

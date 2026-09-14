@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.09.14.6
+
+- Refined the "group by day" agenda layout: calendar name now sits at
+  the left edge of line 2 and time at the right edge of that same line
+  (previously each on its own stacked line), with location on line 3
+  and description on line 4. Lines still only appear when their toggle
+  is on and the event actually has that data. The "group by event"
+  layout is unchanged.
+
 ## 2026.09.14.5
 
 - Added `agenda_grouping` (agenda view only, default `event`): switch to

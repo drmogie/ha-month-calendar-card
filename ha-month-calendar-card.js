@@ -609,22 +609,46 @@ class HaMonthCalendarCard extends HTMLElement {
       const textStyle = isToday ? `color:${todayTextColor};` : "";
       const mutedStyle = isToday ? `color:${todayTextColor}; opacity:0.85;` : "";
 
-      const metaLines = [];
-      if (cfg.agenda_show_calendar) {
-        metaLines.push(this._escape(cal.name || cal.entity));
+      const showCalendar = cfg.agenda_show_calendar;
+      const showLocation = cfg.agenda_show_location && !!ev.location;
+      const showDescription = cfg.agenda_show_description && !!description;
+      const showTime = cfg.agenda_show_time;
+
+      let bodyLinesHtml;
+      if (showDayLabel) {
+        // "Group by event" layout (unchanged): calendar, location,
+        // description each their own line, time last.
+        const metaLines = [];
+        if (showCalendar) metaLines.push(this._escape(cal.name || cal.entity));
+        if (showLocation) metaLines.push(this._escape(ev.location));
+        if (showDescription) metaLines.push(this._escape(description));
+        const metaHtml = metaLines
+          .map((line) => `<div class="agenda-meta" style="${mutedStyle}">${line}</div>`)
+          .join("");
+        const timeHtml = showTime
+          ? `<div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>`
+          : "";
+        bodyLinesHtml = `${metaHtml}${timeHtml}`;
+      } else {
+        // "Group by day" layout: line 2 is calendar name (left) + time
+        // (right) sharing one row; location on line 3; description on
+        // line 4 — the day is already said once by the group header.
+        const line2Html =
+          showCalendar || showTime
+            ? `<div class="agenda-meta-row" style="${mutedStyle}">
+                 <span class="agenda-cal-name">${showCalendar ? this._escape(cal.name || cal.entity) : ""}</span>
+                 <span class="agenda-time-right">${showTime ? this._escape(timeText) : ""}</span>
+               </div>`
+            : "";
+        const locationHtml = showLocation
+          ? `<div class="agenda-meta" style="${mutedStyle}">${this._escape(ev.location)}</div>`
+          : "";
+        const descriptionHtml = showDescription
+          ? `<div class="agenda-meta" style="${mutedStyle}">${this._escape(description)}</div>`
+          : "";
+        bodyLinesHtml = `${line2Html}${locationHtml}${descriptionHtml}`;
       }
-      if (cfg.agenda_show_location && ev.location) {
-        metaLines.push(this._escape(ev.location));
-      }
-      if (cfg.agenda_show_description && description) {
-        metaLines.push(this._escape(description));
-      }
-      const metaHtml = metaLines
-        .map((line) => `<div class="agenda-meta" style="${mutedStyle}">${line}</div>`)
-        .join("");
-      const timeHtml = cfg.agenda_show_time
-        ? `<div class="agenda-time" style="${mutedStyle}">${this._escape(timeText)}</div>`
-        : "";
+
       const dayLabelHtml = showDayLabel
         ? `<div class="agenda-day-label" style="${textStyle}">${this._escape(label)}</div>`
         : "";
@@ -638,8 +662,7 @@ class HaMonthCalendarCard extends HTMLElement {
           <ha-icon icon="${cal.icon}" class="agenda-icon" style="color:${isToday ? todayTextColor : cal.color};"></ha-icon>
           <div class="agenda-text">
             <div class="agenda-title" style="${textStyle}">${this._escape(ev.summary || "(No title)")}</div>
-            ${metaHtml}
-            ${timeHtml}
+            ${bodyLinesHtml}
           </div>
           ${dayLabelHtml}
         </div>`;
@@ -940,6 +963,25 @@ class HaMonthCalendarCard extends HTMLElement {
         font-size: 0.78rem;
         color: var(--secondary-text-color);
         margin-top: 2px;
+      }
+      .agenda-meta-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: var(--secondary-text-color);
+        margin-top: 1px;
+      }
+      .agenda-cal-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .agenda-time-right {
+        margin-left: auto;
+        flex-shrink: 0;
+        font-size: 0.78rem;
+        white-space: nowrap;
       }
       .agenda-day-label {
         flex-shrink: 0;
