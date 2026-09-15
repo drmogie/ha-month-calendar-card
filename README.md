@@ -1,4 +1,4 @@
-# Month Calendar Card (Home Assistant)
+# Month Calendar Card
 
 A view-only Lovelace calendar card with two card-wide views:
 
